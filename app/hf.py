@@ -341,6 +341,7 @@ class HFClient:
             raise HFError(f"日期格式不正确：{day}") from exc
 
         api_error: Exception | None = None
+        papers: list[dict[str, Any]] = []
         async with self._client() as client:
             for attempt in range(2):
                 try:
@@ -359,6 +360,10 @@ class HFClient:
                             papers = papers[: self.config.max_papers]
                             break
                     if response.status_code in {429, 500, 502, 503, 504}:
+                        api_error = HFError(
+                            f"Hugging Face API 返回 HTTP {response.status_code}。",
+                            status_code=response.status_code,
+                        )
                         await asyncio.sleep(1.2 * (attempt + 1))
                         continue
                     detail = _response_detail(response)
@@ -383,6 +388,9 @@ class HFClient:
                         f"Hugging Face API 返回 HTTP {response.status_code}：{detail or '请求被拒绝。'}",
                         status_code=response.status_code,
                     )
+                except HFError as exc:
+                    api_error = exc
+                    break
                 except (httpx.HTTPError, ValueError) as exc:
                     api_error = exc
                     if attempt == 0:
@@ -392,12 +400,32 @@ class HFClient:
                 if api_error:
                     LOGGER.warning("Daily API failed, falling back to page: %s", api_error)
 
-        if not papers:
-            # The API occasionally lags behind the rendered page; this also makes
-            # historical dates resilient to API changes.
-            papers = await self._fetch_daily_from_page(day)
-        if not papers:
-            return []
+        # A nonempty API response can still be incomplete. Reconcile both views
+        # on every check, including lightweight scheduler checks.
+        try:
+            page_papers = await self._fetch_daily_from_page(day)
+        except HFError as exc:
+            if not papers:
+                if api_error:
+                    raise HFError(f"日报两路抓取失败：{api_error}；{exc}") from exc
+                raise
+            LOGGER.warning("Daily page unavailable; using %s API papers: %s", len(papers), exc)
+            page_papers = []
+        if api_error:
+            LOGGER.warning("Daily API unavailable; using dated page: %s", api_error)
+        api_count = len(papers)
+        merged = {paper["id"]: paper for paper in papers}
+        for paper in page_papers:
+            merged.setdefault(paper["id"], paper)
+        papers = list(merged.values())[: self.config.max_papers]
+        for paper in papers:
+            # Daily membership comes from the requested list, not the original
+            # publication/submission timestamp (older papers can be featured).
+            paper["daily_date"] = day
+        LOGGER.info(
+            "Daily reconciliation %s: api=%s page=%s merged=%s",
+            day, api_count, len(page_papers), len(papers),
+        )
 
         should_enrich = self.config.detail_pages if enrich_details is None else enrich_details
         if should_enrich:
@@ -433,7 +461,7 @@ class HFClient:
         return ""
 
     async def _fetch_daily_from_page(self, day: str) -> list[dict[str, Any]]:
-        url = f"{self.base_url}/papers?date={day}"
+        url = f"{self.base_url}/papers/date/{day}"
         async with self._client() as client:
             try:
                 response = await client.get(url)
@@ -443,7 +471,9 @@ class HFClient:
                 ) from exc
         if response.status_code != 200:
             raise HFError(f"Hugging Face 页面返回 HTTP {response.status_code}。")
-        _, papers = parse_daily_page(response.text)
+        page_day, papers = parse_daily_page(response.text)
+        if page_day != day:
+            raise HFError(f"Hugging Face 页面日期不符：请求 {day}，返回 {page_day or '未知'}。")
         return papers[: self.config.max_papers]
 
     async def _enrich_details(self, papers: list[dict[str, Any]]) -> None:
@@ -453,7 +483,7 @@ class HFClient:
             async with semaphore:
                 try:
                     async with self._client(timeout=min(20, self.config.timeout_seconds)) as client:
-                        response = await client.get(paper["hf_url"])
+                        response = await client.get(f"{self.base_url}/papers/{paper['id']}")
                     if response.status_code != 200:
                         return
                     links = parse_detail_links(response.text)

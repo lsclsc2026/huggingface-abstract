@@ -144,3 +144,73 @@ def test_parse_detail_media_reads_social_image_and_video():
     media = parse_detail_media(page)
     assert media["image_url"] == "https://cdn.example/paper.png"
     assert media["video_url"] == "https://cdn.example/paper.mp4"
+
+
+def daily_html(day, ids):
+    payload = {"dateString": day, "dailyPapers": [
+        {"paper": {"id": paper_id, "title": f"Paper {paper_id}",
+                   "publishedAt": "2026-10-01T00:00:00Z"}}
+        for paper_id in ids
+    ]}
+    return '<div data-target="DailyPapers" data-props="' + html.escape(
+        json.dumps(payload), quote=True
+    ) + '"></div>'
+
+
+def mock_hf(monkeypatch, handler):
+    # Mock only HTTP; exercise actual parsing, merging and error handling.
+    monkeypatch.setattr(HFClient, "_client", lambda self, timeout=None:
+        httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    return HFClient(FetchConfig(detail_pages=False))
+
+
+@pytest.mark.asyncio
+async def test_fetch_merges_partial_api_with_page_and_assigns_requested_day(monkeypatch):
+    def handler(request):
+        if request.url.path.startswith('/api/'):
+            return httpx.Response(200, json=[{"paper": {
+                "id": "a", "title": "Paper a", "publishedAt": "2026-10-01T00:00:00Z"
+            }}])
+        return httpx.Response(200, text=daily_html("2026-11-05", ["a", "b"]))
+    papers = await mock_hf(monkeypatch, handler).fetch_daily("2026-11-05")
+    assert {p['id'] for p in papers} == {'a', 'b'}
+    assert len(papers) == 2
+    assert {p['daily_date'] for p in papers} == {'2026-11-05'}
+
+
+@pytest.mark.asyncio
+async def test_fetch_keeps_api_when_page_unavailable(monkeypatch):
+    def handler(request):
+        if request.url.path.startswith('/api/'):
+            return httpx.Response(200, json=[{"paper": {"id": "a", "title": "A"}}])
+        return httpx.Response(429)
+    papers = await mock_hf(monkeypatch, handler).fetch_daily("2026-11-05")
+    assert [p['id'] for p in papers] == ['a']
+
+
+@pytest.mark.asyncio
+async def test_fetch_keeps_page_when_api_rejects_request(monkeypatch):
+    def handler(request):
+        if request.url.path.startswith('/api/'):
+            return httpx.Response(403)
+        return httpx.Response(200, text=daily_html("2026-11-05", ["b"]))
+    papers = await mock_hf(monkeypatch, handler).fetch_daily("2026-11-05")
+    assert [p['id'] for p in papers] == ['b']
+
+
+@pytest.mark.asyncio
+async def test_fetch_rejects_page_for_another_day(monkeypatch):
+    def handler(request):
+        if request.url.path.startswith('/api/'):
+            return httpx.Response(200, json=[])
+        return httpx.Response(200, text=daily_html("2026-11-04", ["wrong"]))
+    with pytest.raises(HFError, match="日期"):
+        await mock_hf(monkeypatch, handler).fetch_daily("2026-11-05")
+
+
+@pytest.mark.asyncio
+async def test_fetch_fails_explicitly_if_both_sources_fail(monkeypatch):
+    def handler(request):
+        return httpx.Response(403)
+    with pytest.raises(HFError):
+        await mock_hf(monkeypatch, handler).fetch_daily("2026-11-05")
