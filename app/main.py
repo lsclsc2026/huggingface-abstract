@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -14,13 +13,11 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from starlette.background import BackgroundTask
 
 from . import __version__
 from .config import BASE_DIR, ConfigError, Settings, load_settings
 from .db import Database
 from .exporting import build_json, build_markdown
-from .hf import HFClient, HFError, paper_download_name
 from .llm import LLMClient, LLMError
 from .service import ExtractionService, digest_due
 from .public import public_paper, public_run, reader_settings
@@ -29,11 +26,6 @@ from .comments import Comments, CommentCreate, comments_enabled, MAX_LENGTH, MIN
 
 LOGGER = logging.getLogger(__name__)
 STATIC_DIR = BASE_DIR / "app" / "static"
-PROFILE_SETTING_KEY = "profile"
-MAX_KEYWORDS = 12
-MIN_KEYWORD_LENGTH = 2
-MAX_KEYWORD_LENGTH = 30
-MAX_PROFILE_NOTES = 300
 
 
 class Runtime:

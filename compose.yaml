@@ -1,0 +1,50 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=32m,mode=1777]
+    environment:
+      HF_PAPER_CONFIG: /etc/paper-daily/config.yaml
+      HF_PAPER_ADMIN_TOKEN_FILE: /app/data/admin.token
+      HF_PAPER_COMMENTS_ENABLED: "${HF_PAPER_COMMENTS_ENABLED:-false}"
+    volumes:
+      - ./config.yaml:/etc/paper-daily/config.yaml:ro
+      - ./data:/app/data
+    expose: ["8765"]
+    command: [python, -m, uvicorn, "app.main:app", --host, "0.0.0.0", --port, "8765", --workers, "1", --no-access-log, --proxy-headers, --forwarded-allow-ips, "${PAPER_DAILY_PROXY_IP:-172.31.250.2}"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 30s
+    networks: [backend]
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PAPER_DAILY_DOMAIN: "${PAPER_DAILY_DOMAIN:?Set PAPER_DAILY_DOMAIN to your actual domain}"
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      backend:
+        ipv4_address: "${PAPER_DAILY_PROXY_IP:-172.31.250.2}"
+networks:
+  backend:
+    ipam:
+      config:
+        - subnet: "${PAPER_DAILY_SUBNET:-172.31.250.0/24}"
+volumes:
+  caddy_data:
+  caddy_config:

@@ -409,11 +409,11 @@ class Database:
             rows = conn.execute(
                 """
                 SELECT * FROM papers
-                WHERE title LIKE ? OR abstract LIKE ? OR analysis LIKE ? OR note LIKE ?
-                ORDER BY daily_date DESC, relevance DESC
+                WHERE title LIKE ? OR abstract LIKE ? OR analysis LIKE ?
+                ORDER BY daily_date DESC, upvotes DESC, id ASC
                 LIMIT ?
                 """,
-                (pattern, pattern, pattern, pattern, max(1, min(limit, 200))),
+                (pattern, pattern, pattern, max(1, min(limit, 200))),
             ).fetchall()
         return [_paper_row(row) for row in rows]
 

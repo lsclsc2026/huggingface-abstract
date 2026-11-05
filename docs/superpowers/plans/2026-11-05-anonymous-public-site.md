@@ -40,7 +40,7 @@ Files: app/static/index.html, app/static/app.js, app/static/styles.css, app/__in
 - [ ] JS检查及真实浏览器桌面/移动验证，提交。
 
 ### Task4: 部署与交付
-Files: Dockerfile, compose.yaml, .dockerignore, deploy/nginx.conf, deploy/README.md, deploy/backup.py, deploy/admin.py, HANDOFF.md, AGENTS.md, README.md。
+Files: Dockerfile, compose.yaml, .dockerignore, deploy/Caddyfile, deploy/README.md, deploy/backup.py, deploy/admin.py, HANDOFF.md, AGENTS.md, README.md。
 - [ ] 令牌/身份密钥持久化、仅代理入站、自动恢复、HTTPS配置、管理及备份工具。
 - [ ] 完整测试和独立只读审查；代码/归档扫描；推送GitHub。
 - [ ] 现有私有云环境备份后更新验证，提供版本和备份证据；公网域名/服务器待用户决定，不能声称已公网交付。

@@ -1,0 +1,9 @@
+{$PAPER_DAILY_DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 16KB
+    }
+    reverse_proxy 127.0.0.1:8765 {
+        header_up X-Forwarded-For {http.request.remote.host}
+    }
+}

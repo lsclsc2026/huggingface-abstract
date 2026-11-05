@@ -18,3 +18,7 @@ conversation.md
 dist/
 *.tar.gz
 *.zip
+
+.env.*
+!.env.example
+secrets/

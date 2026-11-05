@@ -57,3 +57,8 @@ def test_runtime_no_longer_recalculates_relevance(tmp_path,monkeypatch):
     monkeypatch.setenv('HF_PAPER_CONFIG',str(path))
     with TestClient(create_app()) as client:
         assert client.get('/api/meta').status_code==200
+
+
+def test_public_search_does_not_use_private_notes_as_a_match(public_client):
+    payload=public_client.get('/api/search',params={'q':'PRIVATE NOTE SENTINEL'}).json()
+    assert payload['papers']==[]

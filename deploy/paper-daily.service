@@ -1,16 +1,20 @@
 [Unit]
-Description=Paper Daily local research reader
+Description=Paper Daily public reader
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/paper-daily
-ExecStart=/opt/paper-daily/.venv/bin/python run.py --no-browser --host 127.0.0.1
+ExecStart=/opt/paper-daily/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1 --no-access-log --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 Environment=HF_PAPER_CONFIG=/opt/paper-daily/config.yaml
+Environment=HF_PAPER_ADMIN_TOKEN_FILE=/opt/paper-daily/data/admin.token
+Environment=HF_PAPER_COMMENTS_ENABLED=false
+UMask=0077
+NoNewPrivileges=true
 # 不在 unit 里写死 API Key；使用 config.yaml 或 EnvironmentFile
 # EnvironmentFile=/opt/paper-daily/.env
 
