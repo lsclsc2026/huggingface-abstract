@@ -9,7 +9,6 @@ from .db import Database, utc_now
 from .hf import HFClient, HFError
 from .llm import LLMClient, LLMError, heuristic_analysis, heuristic_digest
 from .prompts import public_paper_order
-from .relevance import score_relevance
 
 LOGGER = logging.getLogger(__name__)
 
@@ -72,8 +71,6 @@ class ExtractionService:
 
             self.db.upsert_papers(papers)
             all_papers = self.db.get_papers_for_date(day)
-            for paper in all_papers:
-                self.db.update_relevance(paper["id"], score_relevance(paper, self.settings.profile)[0])
             # Incremental by default: only papers without an analysis are sent
             # to the model. refresh=True is kept for explicit full rebuilds.
             to_process = [

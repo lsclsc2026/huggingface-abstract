@@ -31,8 +31,9 @@ def make_config(tmp_path: Path) -> Path:
 def test_api_day_flags_and_export(tmp_path, monkeypatch):
     config_path = make_config(tmp_path)
     monkeypatch.setenv("HF_PAPER_CONFIG", str(config_path))
+    monkeypatch.setenv("HF_PAPER_ADMIN_TOKEN", "test-admin")
     app = create_app()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"Authorization": "Bearer test-admin"}) as client:
         runtime = client.app.state.runtime
         runtime.db.upsert_papers(
             [
@@ -98,7 +99,7 @@ def test_api_day_flags_and_export(tmp_path, monkeypatch):
         response = client.get("/api/days/2026-11-04/export.md")
         assert response.status_code == 200
         assert "A Local Paper" in response.text
-        assert "local note" in response.text
+        assert "local note" not in response.text
         assert "读之前，先认识这几个词" in response.text
         assert "可以把它想成整理书架" in response.text
         assert "假设一个本地场景" in response.text
@@ -126,60 +127,11 @@ def test_api_day_flags_and_export(tmp_path, monkeypatch):
         assert "Paper Daily" in response.text
 
 
-def test_profile_update_validates_and_rescores(tmp_path, monkeypatch):
+def test_personal_profile_endpoint_is_retired(tmp_path, monkeypatch):
     config_path = make_config(tmp_path)
     monkeypatch.setenv("HF_PAPER_CONFIG", str(config_path))
-    app = create_app()
-    with TestClient(app) as client:
-        runtime = client.app.state.runtime
-        runtime.db.upsert_papers(
-            [
-                {
-                    "id": "p-agent",
-                    "daily_date": "2026-11-04",
-                    "title": "Agent Systems",
-                    "abstract": "A paper about agents.",
-                    "keywords": ["agent"],
-                },
-                {
-                    "id": "p-vision",
-                    "daily_date": "2026-11-04",
-                    "title": "Vision Models",
-                    "abstract": "A paper about vision.",
-                    "keywords": ["vision"],
-                },
-            ]
-        )
-        runtime.db.update_paper_analysis('p-agent', {
-            'summary': 'Shared content', 'relevance_score': 99, 'highlight': True
-        }, 'ok', 'llm')
-        run = runtime.db.create_run('2026-11-04', False)
-        runtime.db.set_digest(run['id'], {'headline': 'Shared digest'})
-        runtime.db.update_run(run['id'], status='completed')
-        response = client.put(
-            "/api/profile",
-            json={"interests": ["Agent"], "notes": "先讲结论"},
-        )
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["rescored"] == 2
-        assert payload["settings"]["profile"]["interests"] == ["Agent"]
-        assert payload["settings"]["profile"]["notes"] == "先讲结论"
-        papers = client.get("/api/days/2026-11-04").json()["papers"]
-        assert papers[0]["id"] == "p-agent"
-        assert papers[0]["relevance"] > papers[1]["relevance"]
-        assert 'relevance_score' not in papers[0]['analysis']
-        assert 'highlight' not in papers[0]['analysis']
-        response = client.put('/api/profile', json={'interests':['vision'], 'notes':'换种风格'})
-        assert response.status_code == 200
-        payload = client.get('/api/days/2026-11-04').json()
-        assert payload['papers'][0]['id'] == 'p-vision'
-        assert payload['digest'] == {'headline': 'Shared digest'}
-        assert client.get('/api/papers/p-agent').json()['paper']['analysis']['summary'] == 'Shared content'
-
-        too_many = [f"kw{i}" for i in range(13)]
-        assert client.put("/api/profile", json={"interests": too_many}).status_code == 400
-        assert client.put("/api/profile", json={"interests": ["x"]}).status_code == 400
-        assert client.put(
-            "/api/profile", json={"interests": ["Agent"], "notes": "长" * 301}
-        ).status_code == 400
+    monkeypatch.setenv("HF_PAPER_ADMIN_TOKEN", "test-admin")
+    with TestClient(create_app()) as client:
+        assert client.put('/api/profile', json={'interests':['Agent']}).status_code == 403
+        assert client.put('/api/profile', json={'interests':['Agent']},
+                          headers={'Authorization':'Bearer test-admin'}).status_code == 410

@@ -10,8 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
@@ -21,8 +21,10 @@ from .config import BASE_DIR, ConfigError, Settings, load_settings
 from .db import Database
 from .exporting import build_json, build_markdown
 from .hf import HFClient, HFError, paper_download_name
-from .llm import LLMClient, LLMError, score_relevance
+from .llm import LLMClient, LLMError
 from .service import ExtractionService, digest_due
+from .public import public_paper, public_run, reader_settings
+from .security import require_admin
 
 LOGGER = logging.getLogger(__name__)
 STATIC_DIR = BASE_DIR / "app" / "static"
@@ -52,50 +54,9 @@ class Runtime:
         settings = load_settings()
         db = Database(settings.storage.database_path)
         db.init()
-        self._apply_saved_profile(settings, db)
         self.settings = settings
         self.db = db
         self.service = ExtractionService(settings, db)
-        # Re-score legacy records using the current fixed rule, without touching
-        # shared analysis or issuing model requests.
-        for paper in db.all_papers():
-            db.update_relevance(paper["id"], score_relevance(paper, settings.profile)[0])
-
-    @staticmethod
-    def _apply_saved_profile(settings: Settings, db: Database) -> None:
-        raw = db.get_setting(PROFILE_SETTING_KEY)
-        if not raw:
-            return
-        try:
-            saved = json.loads(raw)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return
-        interests = saved.get("interests") if isinstance(saved, dict) else None
-        notes = saved.get("notes") if isinstance(saved, dict) else None
-        if isinstance(interests, list):
-            cleaned = [str(item).strip() for item in interests if str(item).strip()]
-            if cleaned:
-                settings.profile.interests = cleaned
-        if isinstance(notes, str):
-            settings.profile.notes = notes
-
-    def apply_profile(self, interests: list[str], notes: str) -> int:
-        active = self.db.active_run()
-        if active:
-            raise RuntimeError("有提取任务正在进行，请完成后再修改关键词。")
-        self.settings.profile.interests = interests
-        self.settings.profile.notes = notes
-        self.db.set_setting(
-            PROFILE_SETTING_KEY,
-            json.dumps({"interests": interests, "notes": notes}, ensure_ascii=False),
-        )
-        rescored = 0
-        for paper in self.db.all_papers():
-            score, _ = score_relevance(paper, self.settings.profile)
-            self.db.update_relevance(paper["id"], score)
-            rescored += 1
-        return rescored
-
     def start(
         self, day: str, refresh: bool, *, sequential: bool = False
     ) -> tuple[dict[str, Any], bool]:
@@ -280,7 +241,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Paper Daily",
-        description="Local Hugging Face Daily Papers reader with private-model summaries",
+        description="Public Hugging Face Daily Papers reader",
         version=__version__,
         lifespan=lifespan,
         docs_url="/api/docs",
@@ -289,6 +250,11 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def headers_middleware(request: Request, call_next: Any) -> Response:
+        if request.url.path in {"/api/docs", "/openapi.json"}:
+            try:
+                require_admin(request)
+            except HTTPException as exc:
+                return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
         response = await call_next(request)
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
@@ -318,15 +284,15 @@ def create_app() -> FastAPI:
             "today": runtime.settings.today(),
             "now": runtime.settings.now().isoformat(timespec="seconds"),
             "started_at": runtime.started_at.isoformat(timespec="seconds"),
-            "settings": runtime.settings.public_settings(),
-            "active_run": active,
+            "settings": reader_settings(runtime.settings),
+            "active_run": public_run(active),
         }
 
-    @app.get("/api/settings")
+    @app.get("/api/settings", dependencies=[Depends(require_admin)])
     async def settings_api(request: Request) -> dict[str, Any]:
         return _runtime(request).settings.public_settings()
 
-    @app.post("/api/settings/reload")
+    @app.post("/api/settings/reload", dependencies=[Depends(require_admin)])
     async def reload_settings(request: Request) -> dict[str, Any]:
         runtime = _runtime(request)
         try:
@@ -341,7 +307,7 @@ def create_app() -> FastAPI:
             "settings": runtime.settings.public_settings(),
         }
 
-    @app.post("/api/settings/test")
+    @app.post("/api/settings/test", dependencies=[Depends(require_admin)])
     async def test_model(request: Request) -> dict[str, Any]:
         runtime = _runtime(request)
         if not runtime.settings.llm.is_configured:
@@ -364,50 +330,14 @@ def create_app() -> FastAPI:
             "reply": reply,
         }
 
-    @app.put("/api/profile")
+    @app.put("/api/profile", dependencies=[Depends(require_admin)])
     async def update_profile(request: Request, body: ProfileUpdate) -> dict[str, Any]:
-        runtime = _runtime(request)
-        interests: list[str] = []
-        seen: set[str] = set()
-        for raw in body.interests:
-            item = str(raw).strip()
-            if not item:
-                continue
-            if len(item) < MIN_KEYWORD_LENGTH or len(item) > MAX_KEYWORD_LENGTH:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"每个关键词需为 {MIN_KEYWORD_LENGTH}-{MAX_KEYWORD_LENGTH} 个字。",
-                )
-            key = item.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            interests.append(item)
-        if not interests:
-            raise HTTPException(status_code=400, detail="请至少保留一个关注关键词。")
-        if len(interests) > MAX_KEYWORDS:
-            raise HTTPException(
-                status_code=400, detail=f"最多只能填写 {MAX_KEYWORDS} 个关键词。"
-            )
-        notes = (body.notes or "").strip()
-        if len(notes) > MAX_PROFILE_NOTES:
-            raise HTTPException(
-                status_code=400, detail=f"阅读偏好不能超过 {MAX_PROFILE_NOTES} 个字。"
-            )
-        try:
-            rescored = runtime.apply_profile(interests, notes)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return {
-            "ok": True,
-            "rescored": rescored,
-            "settings": runtime.settings.public_settings(),
-        }
+        raise HTTPException(status_code=410, detail="个人兴趣与相关度功能已停用。")
 
     @app.get("/api/history")
     async def history(request: Request) -> dict[str, Any]:
         runtime = _runtime(request)
-        return {"days": runtime.db.list_days()}
+        return {"days": [{"date": day["date"], "count": day["count"]} for day in runtime.db.list_days()]}
 
     @app.get("/api/search")
     async def search(request: Request, q: str = "", limit: int = 80) -> dict[str, Any]:
@@ -415,7 +345,7 @@ def create_app() -> FastAPI:
         query = q.strip()
         if len(query) < 2:
             return {"papers": [], "query": query}
-        return {"papers": runtime.db.search(query, limit), "query": query}
+        return {"papers": [public_paper(paper) for paper in runtime.db.search(query, limit)], "query": query}
 
     @app.get("/api/days/{day}")
     async def get_day(request: Request, day: str) -> dict[str, Any]:
@@ -434,16 +364,16 @@ def create_app() -> FastAPI:
             digest_status = "collecting"
         return {
             "date": day,
-            "papers": papers,
+            "papers": [public_paper(paper) for paper in papers],
             "digest": digest,
             "digest_status": digest_status,
             "digest_time": runtime.settings.schedule.digest_time,
-            "summary": runtime.db.day_summary(day),
-            "latest_run": runtime.db.latest_run(day),
-            "active_run": runtime.db.active_run(day),
+            "summary": {key: value for key, value in runtime.db.day_summary(day).items() if key in {"total", "with_github", "failed"}},
+            "latest_run": public_run(runtime.db.latest_run(day)),
+            "active_run": public_run(runtime.db.active_run(day)),
         }
 
-    @app.post("/api/runs", status_code=202)
+    @app.post("/api/runs", status_code=202, dependencies=[Depends(require_admin)])
     async def create_run(request: Request, body: RunRequest) -> JSONResponse:
         runtime = _runtime(request)
         day = _valid_day(body.date or runtime.settings.today())
@@ -461,12 +391,12 @@ def create_app() -> FastAPI:
             content={"run": run, "reused": reused},
         )
 
-    @app.get("/api/runs/active")
+    @app.get("/api/runs/active", dependencies=[Depends(require_admin)])
     async def active_run(request: Request) -> dict[str, Any]:
         runtime = _runtime(request)
         return {"run": runtime.db.active_run()}
 
-    @app.get("/api/runs/{run_id}")
+    @app.get("/api/runs/{run_id}", dependencies=[Depends(require_admin)])
     async def get_run(request: Request, run_id: str) -> dict[str, Any]:
         runtime = _runtime(request)
         run = runtime.db.get_run(run_id)
@@ -480,9 +410,9 @@ def create_app() -> FastAPI:
         paper = runtime.db.get_paper(paper_id)
         if not paper:
             raise HTTPException(status_code=404, detail="论文不存在。")
-        return {"paper": paper}
+        return {"paper": public_paper(paper)}
 
-    @app.patch("/api/papers/{paper_id}")
+    @app.patch("/api/papers/{paper_id}", dependencies=[Depends(require_admin)])
     async def patch_paper(
         request: Request, paper_id: str, body: PaperPatch
     ) -> dict[str, Any]:
@@ -499,49 +429,22 @@ def create_app() -> FastAPI:
         return {"paper": paper}
 
     @app.get("/api/papers/{paper_id}/pdf")
-    async def download_pdf(request: Request, paper_id: str) -> FileResponse:
-        runtime = _runtime(request)
-        paper = runtime.db.get_paper(paper_id)
+    async def download_pdf(request: Request, paper_id: str) -> RedirectResponse:
+        from urllib.parse import urlparse
+        paper = _runtime(request).db.get_paper(paper_id)
         if not paper:
             raise HTTPException(status_code=404, detail="论文不存在。")
-        cached = Path(paper.get("pdf_path") or "")
-        if cached.is_file() and cached.stat().st_size > 1000:
-            return FileResponse(
-                cached,
-                media_type="application/pdf",
-                filename=paper_download_name(paper),
-                content_disposition_type="attachment",
-            )
-        client = HFClient(runtime.settings.fetch)
-        try:
-            if runtime.settings.storage.cache_pdfs:
-                target = await client.download_pdf(
-                    paper, runtime.settings.storage.downloads_dir / paper["daily_date"]
-                )
-                runtime.db.set_pdf_path(paper_id, str(target))
-                return FileResponse(
-                    target,
-                    media_type="application/pdf",
-                    filename=paper_download_name(paper),
-                    content_disposition_type="attachment",
-                )
-            temp_dir = runtime.settings.storage.data_dir / "tmp"
-            target = await client.download_pdf(paper, temp_dir)
-            return FileResponse(
-                target,
-                media_type="application/pdf",
-                filename=paper_download_name(paper),
-                content_disposition_type="attachment",
-                background=BackgroundTask(_safe_unlink, target),
-            )
-        except HFError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        url = str(paper.get("pdf_url") or "")
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.hostname not in {"arxiv.org", "export.arxiv.org"}:
+            raise HTTPException(status_code=404, detail="暂无可用的官方 PDF 链接。")
+        return RedirectResponse(url, status_code=307)
 
     @app.get("/api/days/{day}/export.md")
     async def export_markdown(request: Request, day: str) -> Response:
         runtime = _runtime(request)
         day = _valid_day(day)
-        papers = runtime.db.get_papers_for_date(day)
+        papers = [public_paper(paper) for paper in runtime.db.get_papers_for_date(day)]
         if not papers:
             raise HTTPException(status_code=404, detail="这一天还没有可导出的论文。")
         digest = runtime.db.digest_for_day(day)
@@ -557,7 +460,7 @@ def create_app() -> FastAPI:
     async def export_json(request: Request, day: str) -> Response:
         runtime = _runtime(request)
         day = _valid_day(day)
-        papers = runtime.db.get_papers_for_date(day)
+        papers = [public_paper(paper) for paper in runtime.db.get_papers_for_date(day)]
         if not papers:
             raise HTTPException(status_code=404, detail="这一天还没有可导出的论文。")
         digest = runtime.db.digest_for_day(day)

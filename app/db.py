@@ -245,7 +245,7 @@ class Database:
             rows = conn.execute(
                 """
                 SELECT * FROM papers WHERE daily_date = ?
-                ORDER BY relevance DESC, upvotes DESC, id ASC
+                ORDER BY upvotes DESC, id ASC
                 """,
                 (day,),
             ).fetchall()

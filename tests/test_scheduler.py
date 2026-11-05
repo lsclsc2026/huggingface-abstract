@@ -87,7 +87,7 @@ async def test_failed_digest_retries_next_interval_with_public_selection(schedul
         runtime.db.update_paper_analysis(paper['id'], {'summary': 'Shared'}, 'ok', 'llm')
     # Personal relevance favors A, public popularity favors B. top_n=1 must
     # select B regardless of this user's interest and the database's sort order.
-    runtime.apply_profile(['agent'], '只写智能体')
+    runtime.db.update_relevance('a', 100)
     clock['now'] = clock['now'].replace(hour=16, minute=0)
     attempts = []
     async def chat(self, messages, **kwargs):

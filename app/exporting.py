@@ -9,14 +9,13 @@ from .config import Settings
 def build_markdown(
     day: str, papers: list[dict[str, Any]], digest: dict[str, Any] | None, settings: Settings
 ) -> str:
-    papers = sorted(
-        papers, key=lambda item: float(item.get("relevance") or 0), reverse=True
-    )
+    from .prompts import public_paper_order
+    papers = public_paper_order(papers)
     lines: list[str] = [
         f"# Hugging Face Daily Papers · {day}",
         "",
         f"> 共 {len(papers)} 篇 · 由 Paper Daily 导出 · "
-        f"模型：{settings.llm.model if settings.llm.is_configured else '未配置（规则摘要）'}",
+        "统一中文论文解读",
         "",
     ]
     if digest:
@@ -109,7 +108,6 @@ def build_markdown(
                 "",
                 f"**原标题**：{paper.get('title', '')}",
                 "",
-                f"**相关度**：{int(float(paper.get('relevance') or 0))}/100 · "
                 f"**阅读时长**：约 {analysis.get('read_minutes', 12)} 分钟 · "
                 f"**类型**：{analysis.get('paper_type', '')} · "
                 f"**难度**：{analysis.get('difficulty', '')}",
@@ -191,8 +189,6 @@ def build_markdown(
             lines.extend([f"**作者**：{shown}", ""])
         if paper.get("organization"):
             lines.extend([f"**机构**：{paper['organization']}", ""])
-        if paper.get("note"):
-            lines.extend([f"**我的笔记**：{paper['note']}", ""])
         if paper.get("abstract"):
             lines.extend(["<details>", "<summary>原始摘要</summary>", ""])
             lines.extend([paper["abstract"], "", "</details>"])
