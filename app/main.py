@@ -144,8 +144,12 @@ class Runtime:
         except Exception as exc:
             LOGGER.warning("Scheduled HF check failed: %s", exc)
             return False
-        existing = {paper["id"] for paper in self.db.get_papers_for_date(day)}
-        return any(paper["id"] not in existing for paper in papers)
+        existing = self.db.get_papers_for_date(day)
+        existing_ids = {paper["id"] for paper in existing}
+        return (
+            any(not paper.get("analysis") for paper in existing)
+            or any(paper["id"] not in existing_ids for paper in papers)
+        )
 
     async def _scheduler_tick(self) -> None:
         if not self.settings.schedule.enabled:

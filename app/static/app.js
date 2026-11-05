@@ -1158,10 +1158,10 @@
                 <p>${esc(paper.abstract || "暂无原始摘要。")}</p>
               </details>
 
-              <div class="note-box">
-                <div class="note-head"><h3>PRIVATE NOTE / 我的笔记</h3><button class="save-note" data-action="save-note">保存笔记</button></div>
-                <textarea id="note-input" placeholder="写点自己的判断、跟进事项或实验想法… Ctrl / ⌘ + Enter 保存">${esc(paper.note || "")}</textarea>
-              </div>
+              <section class="note-box" aria-label="评论区">
+                <div class="note-head"><h3>评论区</h3></div>
+                <p>评论功能暂未开放。</p>
+              </section>
 
               <div class="detail-nav">
                 <button data-action="detail-prev"${prev ? "" : " disabled"}>${icon("left")}<span>${prev ? esc(analysisOf(prev).title_zh || prev.title) : "上一篇"}</span></button>
@@ -1172,7 +1172,7 @@
             <aside class="detail-aside">
               <div class="relevance-panel">
                 <div class="score-ring" style="--score:${Math.max(0, Math.min(100, score))}"><strong>${score}</strong><span>RELEVANCE</span></div>
-                <div class="score-copy"><strong>${score >= 80 ? "值得优先精读" : score >= 60 ? "值得快速浏览" : "按需阅读"}</strong><span>与你的研究画像的匹配程度</span></div>
+                <div class="score-copy"><strong>${score >= 80 ? "值得优先精读" : score >= 60 ? "值得快速浏览" : "按需阅读"}</strong><span>个人关键词覆盖率；按固定规则计算</span></div>
               </div>
               <dl class="detail-meta">
                 <div><dt>Authors</dt><dd>${esc((paper.authors || []).join(", ") || "未知")}</dd></div>
@@ -1238,22 +1238,6 @@
       bookmarkButton.classList.toggle("is-on", Boolean(paper.bookmarked));
       const label = bookmarkButton.querySelector("span");
       if (label) label.textContent = paper.bookmarked ? "已待读" : "待读";
-    }
-  }
-
-  async function saveNote() {
-    const paper = findPaper(state.selectedId);
-    const input = $("#note-input");
-    if (!paper || !input) return;
-    try {
-      const payload = await api(`/api/papers/${encodeURIComponent(paper.id)}`, {
-        method: "PATCH",
-        body: { note: input.value },
-      });
-      replacePaper(payload.paper);
-      toast("笔记已保存。", "success");
-    } catch (error) {
-      toast(error.message, "error");
     }
   }
 
@@ -1546,7 +1530,7 @@
 
           <section class="settings-section">
             <h3>RESEARCH PROFILE / 关注关键词</h3>
-            <p class="settings-tip">写下你关心的方向，Paper Daily 会按这些词重新计算每篇论文的相关度。最多 ${MAX_KEYWORDS} 个，每个 ${MIN_KEYWORD_LENGTH}–${MAX_KEYWORD_LENGTH} 个字。</p>
+            <p class="settings-tip">兴趣词仅用于个人相关度与排序。单篇分析和今日导读采用统一内容，修改兴趣不会重新调用模型。最多 ${MAX_KEYWORDS} 个，每个 ${MIN_KEYWORD_LENGTH}–${MAX_KEYWORD_LENGTH} 个字。</p>
             <div class="keyword-editor">
               <div class="keyword-chips" id="keyword-chips">
                 ${keywords
@@ -1561,12 +1545,12 @@
               </div>
               <div class="keyword-count"><span id="keyword-count">${keywords.length} / ${MAX_KEYWORDS}</span><span>按关键词匹配相关度并重排</span></div>
             </div>
-            <label class="field-label" for="profile-notes">阅读偏好（可选）</label>
-            <textarea id="profile-notes" class="profile-notes" maxlength="${MAX_PROFILE_NOTES}" placeholder="例如：先讲结论，多举实际产品场景，少用公式。">${esc(profile.notes || "")}</textarea>
+            <label class="field-label" for="profile-notes">个人备注（可选，仅保存）</label>
+            <textarea id="profile-notes" class="profile-notes" maxlength="${MAX_PROFILE_NOTES}" placeholder="可记录阅读偏好；不会改变统一写作风格、内容或相关度。">${esc(profile.notes || "")}</textarea>
             <div class="settings-actions">
               <button class="ghost-btn is-accent" data-action="save-profile">${icon("check")} 配置生效</button>
             </div>
-            <p class="source-note" id="profile-save-result">保存后会立即重新排序；摘要正文会在下一次「刷新今日」时使用新关键词。</p>
+            <p class="source-note" id="profile-save-result">相关度为已匹配兴趣词占比，使用固定中英文术语映射；不混入模型评分或点赞数。保存只更新个人排序，不改写分析和导读。</p>
           </section>
         </div>
       </div>
@@ -1792,9 +1776,6 @@
       case "copy-citation":
         copyCitation(findPaper(actionEl.dataset.id));
         break;
-      case "save-note":
-        saveNote();
-        break;
       case "add-keyword":
         addKeyword();
         break;
@@ -1905,11 +1886,6 @@
     if (event.key === "Enter" && event.target?.id === "keyword-input") {
       event.preventDefault();
       addKeyword();
-      return;
-    }
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && event.target?.id === "note-input") {
-      event.preventDefault();
-      saveNote();
       return;
     }
     if ($("#detail-root")?.innerHTML) {

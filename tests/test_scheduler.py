@@ -124,3 +124,17 @@ async def test_disabled_digest_does_not_trigger_a_run(scheduled_runtime):
         assert runtime.db.latest_run('2026-11-05') is None
     finally:
         await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_resumes_unanalyzed_papers_after_interruption(scheduled_runtime):
+    runtime, clock, papers = scheduled_runtime
+    # A crash can happen after upsert but before analysis. All IDs already
+    # exist, yet the next periodic check must complete their pending analyses.
+    runtime.db.upsert_papers(papers)
+    try:
+        await tick(runtime)
+        assert all(p['analysis'] for p in runtime.db.get_papers_for_date('2026-11-05'))
+        assert runtime.db.latest_run('2026-11-05')['status'] == 'completed'
+    finally:
+        await runtime.shutdown()
