@@ -1,0 +1,137 @@
+# =============================================================================
+# Paper Daily · 个人配置文件
+# =============================================================================
+# 改完保存后，在页面右上角「设置」里点击「重新加载配置」，不需要重启程序。
+# 任何以 ${ENV_VAR} 形式写的值，都会从环境变量读取，避免把密钥写进文件。
+# =============================================================================
+
+app:
+  # 只监听本机，避免局域网内其他人访问你的论文和 API Key 配置。
+  host: "127.0.0.1"
+  port: 8765
+  open_browser: true
+  # 日期以这个时区为准。"今日提取"取的是该时区的今天。
+  timezone: "Asia/Shanghai"
+
+storage:
+  # 数据库、PDF、导出文件都在这里。相对路径以项目根目录为基准。
+  data_dir: "./data"
+  # 下载 PDF 后保留在本地；再次下载会直接使用缓存。
+  cache_pdfs: true
+
+# -----------------------------------------------------------------------------
+# 你的研究画像：这是个性化摘要和推荐排序的核心。
+# 写得越具体，模型越能判断「这篇论文跟我有什么关系」。
+# -----------------------------------------------------------------------------
+profile:
+  name: ""
+  role: "AI 研究者 / 工程师"
+  output_language: "简体中文"
+
+  interests:
+    - "大模型智能体（Agent）、工具调用与多智能体协作"
+    - "推理模型、测试时计算与强化学习"
+    - "多模态大模型、视频生成与视觉理解"
+    - "RAG、长上下文与知识密集型应用"
+    - "高效训练/推理、模型压缩与系统优化"
+    - "AI 评测、安全对齐与可靠性"
+
+  # 特别想追踪的方向（可留空）
+  favorite_topics:
+    - "Agent"
+    - "Reasoning"
+    - "Multimodal"
+
+  # 明确不想看的主题（可留空）。模型会降低相关度，但默认不会删除论文。
+  avoid_topics: []
+
+  # 补充你的背景、近期项目、阅读偏好，例如：
+  # "我在做企业知识库 Agent，重点关注可落地性、成本和评测，不喜欢纯 benchmark 刷榜。"
+  notes: |
+    我在做 AI 应用与研究工作，希望快速判断一篇论文是否值得精读。
+    偏好：先给结论，再解释方法；关注可复现性、实际收益和局限。
+
+# -----------------------------------------------------------------------------
+# 私有化 / 在线大模型。兼容 OpenAI Chat Completions 协议。
+#
+# DeepSeek：     base_url: https://api.deepseek.com/v1   model: deepseek-reasoner
+# 通义千问：     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+#               model: qwen3-max（或你的私有部署模型名）
+# vLLM / SGLang: base_url: http://127.0.0.1:8000/v1     model: 你的模型名
+# Ollama：       base_url: http://127.0.0.1:11434/v1    model: qwen3:32b
+#               allow_no_api_key: true
+# LM Studio：    base_url: http://127.0.0.1:1234/v1     allow_no_api_key: true
+#
+# 如果 api_key 为空且 allow_no_api_key 为 false，程序会自动退回「本地规则摘要」。
+# 也可以不写密钥，改用环境变量：HF_PAPER_LLM_API_KEY=sk-xxx
+# -----------------------------------------------------------------------------
+llm:
+  enabled: true
+  base_url: "https://api.deepseek.com/v1"
+  api_key: ""
+  model: "deepseek-reasoner"
+
+  # 本地 Ollama / vLLM 没有鉴权时设为 true。
+  allow_no_api_key: false
+
+  temperature: 0.25
+  # 深度科普版输出更长；建议 8000，较小上下文模型可降到 4000-6000。
+  max_tokens: 8000
+  timeout_seconds: 240
+  # 同时调用模型的论文数。私有服务可调高，公有 API 建议 2~4。
+  concurrency: 3
+  max_retries: 1
+
+  # 深度思考强度。OpenAI 兼容服务支持时可填 "low" / "medium" / "high"。
+  # 留空则不发送该参数（DeepSeek Reasoner 自带思考，保持空即可）。
+  reasoning_effort: ""
+  # 是否发送 response_format=json_object。auto 会先尝试，不支持时自动降级。
+  # 可选：auto / always / never
+  json_mode: "auto"
+
+  # 模型服务可选代理，例如 "http://127.0.0.1:7890"。
+  # 留空则自动读取 HTTPS_PROXY / ALL_PROXY；localhost 与 NO_PROXY 中的地址会直连。
+  proxy: ""
+
+  # 额外请求头，例如私有网关的鉴权头。
+  extra_headers: {}
+  # 额外请求体，例如 {"chat_template_kwargs": {"enable_thinking": true}}
+  extra_body: {}
+
+  # 追加到系统提示词，可用来固定术语、风格或输出约束。
+  system_prompt_extra: ""
+
+# -----------------------------------------------------------------------------
+# 抓取设置
+# -----------------------------------------------------------------------------
+fetch:
+  timeout_seconds: 30
+  # 云端无法直连 huggingface.co 时可改为 https://hf-mirror.com
+  hf_base_url: "https://huggingface.co"
+  # 是否进入每篇论文详情页，补充 GitHub / 项目主页等链接。关闭会更快。
+  detail_pages: true
+  detail_concurrency: 5
+  # 每天最多抓取多少篇（HF Daily 通常 20~50 篇，100 足够）。
+  max_papers: 100
+  user_agent: "PaperDaily/1.0 (local personal research reader)"
+  # 可选代理，例如 "http://127.0.0.1:7890"。留空则读取系统环境变量。
+  proxy: ""
+
+# -----------------------------------------------------------------------------
+# 日报导读：所有论文总结完后，再生成一段跨论文的总览和阅读顺序。
+# -----------------------------------------------------------------------------
+digest:
+  enabled: true
+  # 送给模型做导读的论文数量上限（按相关度取前 N 篇，控制成本）。
+  top_n: 18
+
+# -----------------------------------------------------------------------------
+# 自动更新（云端常驻时开启）
+# 每 15 分钟检查一次 HF Daily 是否有新文章；有新文章时只分析新增论文。
+# 今日导读每天只在 digest_time 生成一次，之后不再随新文章重写。
+# -----------------------------------------------------------------------------
+schedule:
+  enabled: true
+  check_interval_minutes: 15
+  digest_time: "16:00"
+  run_on_start: true

@@ -1,0 +1,14 @@
+.venv/
+.uv-cache/
+.pip-cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+config.yaml
+.env
+*.log
+.DS_Store
+node_modules/
+
+backup/

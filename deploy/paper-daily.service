@@ -1,0 +1,18 @@
+[Unit]
+Description=Paper Daily local research reader
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/paper-daily
+ExecStart=/opt/paper-daily/.venv/bin/python run.py --no-browser --host 127.0.0.1
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=HF_PAPER_CONFIG=/opt/paper-daily/config.yaml
+# 不在 unit 里写死 API Key；使用 config.yaml 或 EnvironmentFile
+# EnvironmentFile=/opt/paper-daily/.env
+
+[Install]
+WantedBy=multi-user.target

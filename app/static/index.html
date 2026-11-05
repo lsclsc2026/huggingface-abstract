@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Paper Daily — 你的 Hugging Face 每日论文晨报">
+  <meta name="theme-color" content="#f3f0e7">
+  <title>Paper Daily · HF 论文晨报</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css?v=1.5.0">
+  <script defer src="/static/app.js?v=1.5.0"></script>
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H6M11 18l-6-6 6-6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a7 7 0 0 0 10.7 10.7z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.1 2.1-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-3v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L6.6 17.7l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H5v-3h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1L8.3 6.6l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V5h3v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.1 2.1-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v3h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2l1.7 5.6L19 9l-5.3 1.4L12 16l-1.7-5.6L5 9l5.3-1.4z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7M10 14L21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-4-6 4z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-notes" viewBox="0 0 24 24"><path d="M4 4h16v13l-4 4H4z"/><path d="M8 9h8M8 13h5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <button class="brand" id="brand-btn" aria-label="回到今天">
+      <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span class="brand-copy">
+        <strong>Paper Daily</strong>
+        <small>Hugging Face 论文晨报</small>
+      </span>
+    </button>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="mobile-menu-btn" aria-label="打开日期与筛选" title="日期与筛选">
+        <svg><use href="#i-menu"/></svg>
+      </button>
+      <button class="icon-btn" id="theme-btn" aria-label="切换深色模式" title="切换深色模式">
+        <svg class="sun-icon"><use href="#i-sun"/></svg>
+        <svg class="moon-icon"><use href="#i-moon"/></svg>
+      </button>
+      <button class="settings-btn" id="settings-btn" aria-label="打开设置">
+        <svg><use href="#i-settings"/></svg>
+        <span>设置</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="top-progress" id="top-progress" hidden><span></span></div>
+
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-scroll">
+        <div class="sidebar-heading">
+          <span class="eyebrow">READING DESK</span>
+          <span class="issue" id="issue-label">NO. 001</span>
+        </div>
+
+        <div class="date-card">
+          <div class="date-nav">
+            <button class="date-arrow" id="prev-day" aria-label="前一天" title="前一天">
+              <svg><use href="#i-chevron-left"/></svg>
+            </button>
+            <div class="date-main">
+              <span id="side-weekday">星期三</span>
+              <strong id="side-date">11.04</strong>
+              <span id="side-year">2026</span>
+            </div>
+            <button class="date-arrow" id="next-day" aria-label="后一天" title="后一天">
+              <svg><use href="#i-chevron-right"/></svg>
+            </button>
+          </div>
+          <div class="date-input-wrap">
+            <svg><use href="#i-calendar"/></svg>
+            <input type="date" id="date-picker" aria-label="选择日期">
+            <button id="today-btn" class="today-btn" title="回到今天">今天</button>
+          </div>
+        </div>
+
+        <button class="run-btn" id="run-btn">
+          <span class="run-btn-icon"><svg><use href="#i-spark"/></svg></span>
+          <span class="run-btn-label">
+            <strong id="run-btn-title">今日提取</strong>
+            <small id="run-btn-sub">抓取并生成个性化摘要</small>
+          </span>
+          <svg class="run-btn-arrow"><use href="#i-arrow-right"/></svg>
+        </button>
+        <p class="run-note" id="run-note">不会自动抓取，只有点击时才开始。</p>
+
+        <nav class="filter-nav" aria-label="论文筛选">
+          <button class="filter-link is-active" data-filter="all">
+            <span>全部论文</span><em id="count-all">0</em>
+          </button>
+          <button class="filter-link" data-filter="bookmarked">
+            <span>待读</span><em id="count-bookmarked">0</em>
+          </button>
+        </nav>
+
+        <div class="sidebar-section history-section">
+          <div class="section-label">
+            <span>往期</span>
+            <span class="rule"></span>
+          </div>
+          <div class="history-list" id="history-list">
+            <div class="history-empty">还没有提取记录</div>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="model-status" id="model-status">
+            <i class="status-dot"></i>
+            <div>
+              <strong>检查模型配置中…</strong>
+              <span>等待检查模型状态</span>
+            </div>
+          </div>
+          <button class="text-btn" id="open-settings-link">
+            <svg><use href="#i-settings"/></svg> 兴趣与摘要设置
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+    <main class="main" id="main">
+      <div id="content">
+        <div class="loading-view">
+          <div class="loading-kicker">PREPARING YOUR BRIEFING</div>
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-line"></div>
+          <div class="skeleton-grid">
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="detail-root"></div>
+  <div id="settings-root"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="false"></div>
+
+  <div class="run-dock" id="run-dock" hidden>
+    <div class="run-dock-head">
+      <span class="run-dock-kicker"><i></i> <span id="dock-stage">正在提取</span></span>
+      <button class="dock-close" id="dock-close" aria-label="收起任务面板"><svg><use href="#i-close"/></svg></button>
+    </div>
+    <strong class="run-dock-title" id="dock-title">连接 Hugging Face…</strong>
+    <p class="run-dock-message" id="dock-message">准备读取今日论文</p>
+    <div class="run-progress"><span id="dock-bar"></span></div>
+    <div class="run-dock-foot">
+      <span id="dock-count">0 / 0</span>
+      <span id="dock-percent">0%</span>
+    </div>
+  </div>
+</body>
+</html>
