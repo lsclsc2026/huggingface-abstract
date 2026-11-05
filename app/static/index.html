@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#f3f0e7">
   <title>Paper Daily · HF 论文晨报</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/styles.css?v=1.5.0">
-  <script defer src="/static/app.js?v=1.5.0"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=1.7.0">
+  <script defer src="/static/app.js?v=1.7.0"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -55,10 +55,6 @@
         <svg class="sun-icon"><use href="#i-sun"/></svg>
         <svg class="moon-icon"><use href="#i-moon"/></svg>
       </button>
-      <button class="settings-btn" id="settings-btn" aria-label="打开设置">
-        <svg><use href="#i-settings"/></svg>
-        <span>设置</span>
-      </button>
     </div>
   </header>
 
@@ -93,22 +89,11 @@
           </div>
         </div>
 
-        <button class="run-btn" id="run-btn">
-          <span class="run-btn-icon"><svg><use href="#i-spark"/></svg></span>
-          <span class="run-btn-label">
-            <strong id="run-btn-title">今日提取</strong>
-            <small id="run-btn-sub">抓取并生成个性化摘要</small>
-          </span>
-          <svg class="run-btn-arrow"><use href="#i-arrow-right"/></svg>
-        </button>
-        <p class="run-note" id="run-note">不会自动抓取，只有点击时才开始。</p>
+        <p class="run-note">后台每15分钟检查新文章；16:00后生成一次今日导读，之后仍继续更新论文。</p>
 
         <nav class="filter-nav" aria-label="论文筛选">
           <button class="filter-link is-active" data-filter="all">
             <span>全部论文</span><em id="count-all">0</em>
-          </button>
-          <button class="filter-link" data-filter="bookmarked">
-            <span>待读</span><em id="count-bookmarked">0</em>
           </button>
         </nav>
 
@@ -122,18 +107,6 @@
           </div>
         </div>
 
-        <div class="sidebar-footer">
-          <div class="model-status" id="model-status">
-            <i class="status-dot"></i>
-            <div>
-              <strong>检查模型配置中…</strong>
-              <span>等待检查模型状态</span>
-            </div>
-          </div>
-          <button class="text-btn" id="open-settings-link">
-            <svg><use href="#i-settings"/></svg> 兴趣与相关度设置
-          </button>
-        </div>
       </div>
     </aside>
 
@@ -156,21 +129,7 @@
   </div>
 
   <div id="detail-root"></div>
-  <div id="settings-root"></div>
   <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="false"></div>
 
-  <div class="run-dock" id="run-dock" hidden>
-    <div class="run-dock-head">
-      <span class="run-dock-kicker"><i></i> <span id="dock-stage">正在提取</span></span>
-      <button class="dock-close" id="dock-close" aria-label="收起任务面板"><svg><use href="#i-close"/></svg></button>
-    </div>
-    <strong class="run-dock-title" id="dock-title">连接 Hugging Face…</strong>
-    <p class="run-dock-message" id="dock-message">准备读取今日论文</p>
-    <div class="run-progress"><span id="dock-bar"></span></div>
-    <div class="run-dock-foot">
-      <span id="dock-count">0 / 0</span>
-      <span id="dock-percent">0%</span>
-    </div>
-  </div>
 </body>
 </html>
