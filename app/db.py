@@ -70,6 +70,24 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS site_comments (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    paper_id TEXT NOT NULL REFERENCES papers(id),
+    content TEXT NOT NULL,
+    visitor_hash TEXT NOT NULL,
+    masked_ip TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_site_comments_paper ON site_comments(paper_id, seq DESC);
+CREATE TABLE IF NOT EXISTS comment_limits (
+    visitor_hash TEXT PRIMARY KEY,
+    last_posted_at REAL NOT NULL,
+    window_start REAL NOT NULL,
+    post_count INTEGER NOT NULL
+);
+
 """
 
 PAPER_COLUMNS = {

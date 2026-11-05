@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -25,6 +25,7 @@ from .llm import LLMClient, LLMError
 from .service import ExtractionService, digest_due
 from .public import public_paper, public_run, reader_settings
 from .security import require_admin
+from .comments import Comments, CommentCreate, comments_enabled, MAX_LENGTH, MIN_INTERVAL
 
 LOGGER = logging.getLogger(__name__)
 STATIC_DIR = BASE_DIR / "app" / "static"
@@ -57,6 +58,7 @@ class Runtime:
         self.settings = settings
         self.db = db
         self.service = ExtractionService(settings, db)
+        self.comments = Comments(db, settings.storage.data_dir)
     def start(
         self, day: str, refresh: bool, *, sequential: bool = False
     ) -> tuple[dict[str, Any], bool]:
@@ -286,6 +288,7 @@ def create_app() -> FastAPI:
             "started_at": runtime.started_at.isoformat(timespec="seconds"),
             "settings": reader_settings(runtime.settings),
             "active_run": public_run(active),
+            "comments": {"enabled": comments_enabled(), "max_length": MAX_LENGTH, "interval_seconds": MIN_INTERVAL},
         }
 
     @app.get("/api/settings", dependencies=[Depends(require_admin)])
@@ -403,6 +406,26 @@ def create_app() -> FastAPI:
         if not run:
             raise HTTPException(status_code=404, detail="任务不存在。")
         return {"run": run}
+
+    @app.get("/api/papers/{paper_id}/comments")
+    async def list_comments(request: Request, paper_id: str,
+                            limit: int = Query(20, ge=1, le=50),
+                            before: int | None = Query(None, ge=1)) -> dict[str, Any]:
+        return _runtime(request).comments.list(paper_id, limit, before)
+
+    @app.post("/api/papers/{paper_id}/comments", status_code=201)
+    async def create_comment(request: Request, paper_id: str, body: CommentCreate) -> dict[str, Any]:
+        if not comments_enabled():
+            raise HTTPException(status_code=403, detail="评论发布暂未开放。")
+        if not request.client:
+            raise HTTPException(status_code=400, detail="无法确定评论来源地址。")
+        comment = _runtime(request).comments.create(paper_id, body.content, request.client.host)
+        return {"comment": comment}
+
+    @app.delete("/api/comments/{comment_id}", dependencies=[Depends(require_admin)])
+    async def delete_comment(request: Request, comment_id: str) -> dict[str, Any]:
+        _runtime(request).comments.delete(comment_id)
+        return {"ok": True}
 
     @app.get("/api/papers/{paper_id}")
     async def get_paper(request: Request, paper_id: str) -> dict[str, Any]:
