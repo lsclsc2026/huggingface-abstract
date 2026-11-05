@@ -42,7 +42,7 @@ class Runtime:
         self.tasks: set[asyncio.Task[Any]] = set()
         self.scheduler_task: asyncio.Task[Any] | None = None
         self._last_check: datetime | None = None
-        self._digest_triggered_date = ""
+        self._last_digest_attempt: datetime | None = None
         self.reload()
 
     def reload(self) -> None:
@@ -152,30 +152,32 @@ class Runtime:
             return
         now = self.settings.now()
         today = now.date().isoformat()
-        if self._digest_triggered_date and self._digest_triggered_date != today:
-            self._digest_triggered_date = ""
-        digest_hh, digest_mm = (
-            int(part) for part in self.settings.schedule.digest_time.split(":")
-        )
-        digest_window = (now.hour, now.minute) >= (digest_hh, digest_mm)
+        interval = self.settings.schedule.check_interval_minutes * 60
+        digest_window = digest_due(self.settings, today)
         digest_missing = not self.db.digest_for_day(today)
         active = self.db.active_run()
+        retry_due = (
+            self._last_digest_attempt is None
+            or self._last_digest_attempt.date() != now.date()
+            or (now - self._last_digest_attempt).total_seconds() >= interval
+        )
 
         if (
             digest_window
             and digest_missing
-            and self._digest_triggered_date != today
+            and retry_due
             and not active
         ):
-            self._digest_triggered_date = today
+            self._last_digest_attempt = now
             try:
                 self.start(today, False, sequential=True)
-                LOGGER.info("Scheduler started the 16:00 digest run for %s", today)
+                # A digest run also fetches the current daily list.
+                self._last_check = now
+                LOGGER.info("Scheduler started missing-digest run for %s", today)
             except Exception as exc:
                 LOGGER.warning("Scheduler could not start digest run: %s", exc)
             return
 
-        interval = self.settings.schedule.check_interval_minutes * 60
         due = self._last_check is None or (now - self._last_check).total_seconds() >= interval
         if due and not active:
             self._last_check = now

@@ -215,11 +215,6 @@ class ExtractionService:
                         message = self._completion_message(
                             total, failed, llm_configured, breaker_note
                         )
-                    if not digest_due and not existing_digest:
-                        message = message.replace("、个性化摘要与今日导读", "与个性化摘要")
-                        message += f" 今日导读将在 {self.settings.schedule.digest_time} 生成。"
-                    elif digest_due and not existing_digest:
-                        message += " 今日导读生成失败，稍后可手动刷新重试。"
             else:
                 # Without a model there is no need to open a network client.
                 semaphore = asyncio.Semaphore(1 if sequential else 4)
@@ -241,9 +236,16 @@ class ExtractionService:
                     message = "没有发现新文章。"
                 else:
                     message = self._completion_message(total, failed, False, "")
-                if not digest_due and not existing_digest:
-                    message = message.replace("、个性化摘要与今日导读", "与个性化摘要")
-                    message += f" 今日导读将在 {self.settings.schedule.digest_time} 生成。"
+
+            if digest:
+                message += " 今日导读已保留。" if existing_digest else " 今日导读已生成。"
+            elif self.settings.digest.enabled:
+                if not digest_due:
+                    message += f" 今日导读将在 {self.settings.schedule.digest_time} 后生成。"
+                elif self.settings.schedule.enabled:
+                    message += " 今日导读尚未生成，后台将按检查间隔重试，也可手动刷新。"
+                else:
+                    message += " 今日导读尚未生成，可手动刷新重试。"
 
             self.db.update_run(
                 run_id,
@@ -298,7 +300,7 @@ class ExtractionService:
                 f"已完成 {total} 篇论文，其中 {failed} 篇模型总结失败并已降级。"
                 f"可检查配置后点击「刷新今日」。{note}"
             ).strip()
-        return f"已完成 {total} 篇论文的抓取、个性化摘要与今日导读。{note}".strip()
+        return f"已完成 {total} 篇论文的抓取与统一分析。{note}".strip()
 
 
 class _Breaker:
