@@ -214,3 +214,28 @@ async def test_fetch_fails_explicitly_if_both_sources_fail(monkeypatch):
         return httpx.Response(403)
     with pytest.raises(HFError):
         await mock_hf(monkeypatch, handler).fetch_daily("2026-11-05")
+
+
+@pytest.mark.asyncio
+async def test_fetch_reconciles_independently_cached_date_page_routes(monkeypatch):
+    # Observed mirror behavior: API empty, canonical date page 15 papers,
+    # query-date page 16 papers. Both page routes must participate.
+    def handler(request):
+        if request.url.path.startswith('/api/'):
+            return httpx.Response(200, json=[])
+        ids = ['a'] if '/date/' in request.url.path else ['a', 'b']
+        return httpx.Response(200, text=daily_html('2026-11-05', ids))
+    papers = await mock_hf(monkeypatch, handler).fetch_daily('2026-11-05')
+    assert {p['id'] for p in papers} == {'a', 'b'}
+
+
+@pytest.mark.asyncio
+async def test_fetch_ignores_wrong_date_route_when_other_page_is_correct(monkeypatch):
+    def handler(request):
+        if request.url.path.startswith('/api/'):
+            return httpx.Response(200, json=[])
+        if '/date/' in request.url.path:
+            return httpx.Response(200, text=daily_html('2026-11-05', ['a']))
+        return httpx.Response(200, text=daily_html('2026-11-04', ['wrong']))
+    papers = await mock_hf(monkeypatch, handler).fetch_daily('2026-11-05')
+    assert [p['id'] for p in papers] == ['a']

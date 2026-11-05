@@ -461,20 +461,35 @@ class HFClient:
         return ""
 
     async def _fetch_daily_from_page(self, day: str) -> list[dict[str, Any]]:
-        url = f"{self.base_url}/papers/date/{day}"
+        # Mirrors/CDN edges can cache these two routes independently. Neither
+        # route alone is authoritative about completeness; verify and merge.
+        urls = [f"{self.base_url}/papers/date/{day}", f"{self.base_url}/papers?date={day}"]
         async with self._client() as client:
-            try:
-                response = await client.get(url)
-            except httpx.HTTPError as exc:
-                raise HFError(
-                    "无法连接 Hugging Face，请检查网络或代理设置（fetch.proxy）。"
-                ) from exc
-        if response.status_code != 200:
-            raise HFError(f"Hugging Face 页面返回 HTTP {response.status_code}。")
-        page_day, papers = parse_daily_page(response.text)
-        if page_day != day:
-            raise HFError(f"Hugging Face 页面日期不符：请求 {day}，返回 {page_day or '未知'}。")
-        return papers[: self.config.max_papers]
+            async def fetch(url: str) -> list[dict[str, Any]]:
+                try:
+                    response = await client.get(url)
+                except httpx.HTTPError as exc:
+                    raise HFError("无法连接 Hugging Face，请检查网络或代理设置（fetch.proxy）。") from exc
+                if response.status_code != 200:
+                    raise HFError(f"Hugging Face 页面返回 HTTP {response.status_code}。")
+                page_day, papers = parse_daily_page(response.text)
+                if page_day != day:
+                    raise HFError(f"Hugging Face 页面日期不符：请求 {day}，返回 {page_day or '未知'}。")
+                return papers
+
+            results = await asyncio.gather(*(fetch(url) for url in urls), return_exceptions=True)
+        merged: dict[str, dict[str, Any]] = {}
+        successes = 0
+        for url, result in zip(urls, results):
+            if isinstance(result, BaseException):
+                LOGGER.warning("Daily page failed %s: %s", url, result)
+                continue
+            successes += 1
+            for paper in result:
+                merged.setdefault(paper["id"], paper)
+        if not successes:
+            raise HFError("日报网页均不可用：" + "；".join(str(result) for result in results))
+        return list(merged.values())[: self.config.max_papers]
 
     async def _enrich_details(self, papers: list[dict[str, Any]]) -> None:
         semaphore = asyncio.Semaphore(self.config.detail_concurrency)

@@ -849,7 +849,7 @@ def heuristic_digest(
         "reading_path": reading_path,
         "top_picks": picks,
         "reading_order": [paper["id"] for paper in sorted_papers],
-        "skip_hint": "先读相关度 70 以上的论文；其余可只浏览标题和摘要。",
+        "skip_hint": "时间有限时先按统一阅读路径阅读；其余可先浏览标题和摘要。",
         "source": "heuristic",
         "prompt_version": "digest-heuristic-shared-v5",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

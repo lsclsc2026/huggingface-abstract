@@ -6,6 +6,8 @@
 
 > 接手开发？先读 [HANDOFF.md](HANDOFF.md)，里面有架构、数据模型、API、测试和已知风险。
 
+代码仓库：[lsclsc2026/huggingface-abstract](https://github.com/lsclsc2026/huggingface-abstract)（私有）。后续开发必须使用 Git 分支与提交管理，开发前基线保存在 `v1.5.0-baseline` 标签。真实配置、数据库、备份和聊天记录不入库。
+
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
 ![FastAPI](https://img.shields.io/badge/FastAPI-local-009688)
 ![License](https://img.shields.io/badge/use-personal%20research-1a1912)

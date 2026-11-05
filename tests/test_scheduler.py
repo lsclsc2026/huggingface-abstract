@@ -66,6 +66,7 @@ async def test_interval_is_per_check_and_updates_continue_after_digest(scheduled
         await tick(runtime)
         digest = runtime.db.digest_for_day('2026-11-05')
         assert digest is not None
+        assert digest['reading_order'] == ['b']  # top_n=1 applies to fallback too
         papers.append({'id': 'd', 'daily_date': '2026-11-05', 'title': 'D'})
         clock['now'] += timedelta(minutes=15)
         await tick(runtime)

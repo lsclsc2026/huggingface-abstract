@@ -227,7 +227,11 @@ class ExtractionService:
                 digest = None
                 if digest_due and not existing_digest:
                     digest = heuristic_digest(
-                        day, self.db.get_papers_for_date(day), self.settings.profile
+                        day,
+                        public_paper_order(self.db.get_papers_for_date(day))[
+                            :max(1, self.settings.digest.top_n)
+                        ],
+                        self.settings.profile,
                     )
                     self.db.set_digest(run_id, digest)
                 elif existing_digest:
