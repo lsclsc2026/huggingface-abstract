@@ -44,3 +44,7 @@ Files: Dockerfile, compose.yaml, .dockerignore, deploy/Caddyfile, deploy/README.
 - [ ] 令牌/身份密钥持久化、仅代理入站、自动恢复、HTTPS配置、管理及备份工具。
 - [ ] 完整测试和独立只读审查；代码/归档扫描；推送GitHub。
 - [ ] 现有私有云环境备份后更新验证，提供版本和备份证据；公网域名/服务器待用户决定，不能声称已公网交付。
+
+## 最终范围与执行结果
+
+2026-11-05用户撤下评论需求，Task2及Task3评论UI/API不再交付；历史兼容表与备份保留。Task1及Task3其余公共阅读完成，Task4工具与私有AutoDL更新完成。59测试与真实云端浏览器通过，独立审查的搜索隐私问题已修复。公网域名/服务器/HTTPS尚无资源，不能视为公网交付；证据见 `docs/verification-v1.7.0-2026-11-05.md`。
