@@ -8,7 +8,9 @@ from pathlib import Path
 def test_backup_preserves_wal_database_and_identity_without_raw_wal_files(public_client,tmp_path):
     from deploy.backup import create_backup
     runtime=public_client.app.state.runtime
-    public_client.post('/api/papers/a/comments',json={'content':'Backup comment'})
+    # Existing historical records remain covered by private backup.
+    from app.comments import Comments
+    Comments(runtime.db,runtime.settings.storage.data_dir).create('a','Backup comment','203.0.113.8')
     root=runtime.settings.storage.data_dir
     key=(root/'comment_identity.key').read_bytes()
     output=tmp_path/'backup.tar.gz'

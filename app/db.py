@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from .public import ANALYSIS_FIELDS
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS papers (
     id TEXT PRIMARY KEY,
@@ -405,11 +407,14 @@ class Database:
 
     def search(self, query: str, limit: int = 80) -> list[dict[str, Any]]:
         pattern = f"%{query.strip()}%"
+        # Only public analysis values may determine an anonymous search match.
+        paths = ', '.join("'$." + field + "'" for field in ANALYSIS_FIELDS)
         with self.connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM papers
-                WHERE title LIKE ? OR abstract LIKE ? OR analysis LIKE ?
+                WHERE title LIKE ? OR abstract LIKE ? OR
+                      json_extract(CASE WHEN json_valid(analysis) THEN analysis ELSE '{{}}' END, {paths}) LIKE ?
                 ORDER BY daily_date DESC, upvotes DESC, id ASC
                 LIMIT ?
                 """,

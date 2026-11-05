@@ -28,8 +28,6 @@
     pollTimer: null,
     digestTimer: null,
     loadSeq: 0,
-    commentsEnabled: false,
-    commentStates: new Map(),
   };
 
   const ICONS = {
@@ -292,7 +290,6 @@
       state.meta = meta;
       state.today = meta.today;
       state.settings = meta.settings;
-      state.commentsEnabled = Boolean(meta.comments?.enabled);
       state.date = meta.today;
       updateDateChrome();
       const picker = $("#date-picker");
@@ -323,7 +320,6 @@
 
     document.addEventListener("click", onDocumentClick);
     document.addEventListener("input", onDocumentInput);
-    document.addEventListener("submit", onCommentSubmit);
     document.addEventListener("change", onDocumentChange);
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", () => {
@@ -847,7 +843,6 @@
     state.detailList = list;
     state.detailIndex = list.findIndex((item) => item.id === id);
     renderDetail(paper);
-    loadComments(id);
     document.body.classList.add("modal-open");
     requestAnimationFrame(() => $("#detail-root .detail-close")?.focus());
   }
@@ -972,7 +967,6 @@
                 <p>${esc(paper.abstract || "暂无原始摘要。")}</p>
               </details>
 
-              ${commentsShell(paper.id)}
 
               <div class="detail-nav">
                 <button data-action="detail-prev"${prev ? "" : " disabled"}>${icon("left")}<span>${prev ? esc(analysisOf(prev).title_zh || prev.title) : "上一篇"}</span></button>
@@ -986,7 +980,7 @@
                 <div><dt>Affiliation</dt><dd>${esc(paper.organization || "未标注")}</dd></div>
                 <div><dt>Published</dt><dd>${esc(String(paper.published_at || "").slice(0, 10) || "未知")}</dd></div>
                 <div><dt>Reading</dt><dd>约 ${Number(analysis.read_minutes || 12)} 分钟 · ${esc(analysis.paper_type || "论文")}</dd></div>
-                <div><dt>Community</dt><dd>${paper.upvotes || 0} 赞${paper.comments ? ` · ${paper.comments} 条讨论` : ""}</dd></div>
+                <div><dt>Community</dt><dd>${paper.upvotes || 0} 赞</dd></div>
                 <div><dt>arXiv</dt><dd>${esc(paper.id)}</dd></div>
               </dl>
               <div class="link-stack">
@@ -1096,120 +1090,6 @@
      Event delegation
      ------------------------------------------------------------------------ */
 
-  function commentState(id) {
-    if (!state.commentStates.has(id)) state.commentStates.set(id, {
-      items: [], draft: "", loading: false, posting: false, cursor: null,
-      more: false, error: "", seq: 0,
-    });
-    return state.commentStates.get(id);
-  }
-
-  function commentsShell(id) {
-    const entry = commentState(id);
-    return `<section class="comments-section" aria-labelledby="comments-heading" data-paper-id="${esc(id)}">
-      <div class="note-head"><h3 id="comments-heading">评论区</h3><span>北京时间</span></div>
-      <p class="comment-tip">评论公开展示，IP会脱敏。头像颜色仅用于区分网络来源，不能代表真实身份。</p>
-      <div id="comment-list" class="comment-list"></div>
-      <p id="comment-status" class="comment-status" role="status" aria-live="polite"></p>
-      <button type="button" class="ghost-btn" id="comments-more" data-action="load-comments" data-paper-id="${esc(id)}" hidden>加载更早评论</button>
-      ${state.commentsEnabled ? `<form id="comment-form" class="comment-form" data-paper-id="${esc(id)}">
-        <label for="comment-input">发表评论</label>
-        <textarea id="comment-input" data-paper-id="${esc(id)}" maxlength="1000" rows="4" required placeholder="围绕论文分享你的看法，最多1000字。"${entry.posting ? " disabled" : ""}>${esc(entry.draft)}</textarea>
-        <button class="ghost-btn is-accent" type="submit"${entry.posting ? " disabled" : ""}>${entry.posting ? "正在发送…" : "发送评论"}</button>
-      </form>` : '<p class="comment-tip">评论发布暂未开放。</p>'}
-    </section>`;
-  }
-
-  function renderComments(id) {
-    if (state.selectedId !== id) return;
-    const list = $("#comment-list");
-    if (!list) return;
-    const entry = commentState(id);
-    list.innerHTML = entry.items.map((item) => {
-      const color = /^#[0-9a-f]{6}$/i.test(item.avatar_color) ? item.avatar_color : "#476c9b";
-      const time = new Date(item.created_at);
-      const label = Number.isNaN(time.getTime()) ? "" : new Intl.DateTimeFormat("zh-CN", {
-        timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
-        hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
-      }).format(time);
-      return `<article class="comment-item">
-        <span class="comment-avatar" style="background-color:${color}" aria-hidden="true">${esc(item.visitor.slice(-2))}</span>
-        <div class="comment-body"><div class="comment-meta"><strong>${esc(item.visitor)}</strong><span>IP ${esc(item.ip)}</span><time datetime="${esc(item.created_at)}">${esc(label)}</time></div>
-        <p class="comment-text">${esc(item.content)}</p></div>
-      </article>`;
-    }).join("");
-    const status = $("#comment-status");
-    if (status) status.textContent = entry.error || (entry.loading ? "正在加载评论…" : entry.items.length ? "" : "暂无评论。");
-    const more = $("#comments-more");
-    if (more) { more.hidden = !entry.more; more.disabled = entry.loading; }
-  }
-
-  async function loadComments(id, append = false) {
-    const entry = commentState(id);
-    if (entry.loading && append) return;
-    const seq = ++entry.seq;
-    entry.loading = true;
-    entry.error = "";
-    renderComments(id);
-    try {
-      const params = append && entry.cursor ? `?before=${encodeURIComponent(entry.cursor)}` : "";
-      const payload = await api(`/api/papers/${encodeURIComponent(id)}/comments${params}`);
-      if (seq !== entry.seq) return;
-      const existing = append ? entry.items : [];
-      const merged = [...existing, ...payload.comments];
-      entry.items = [...new Map(merged.map((item) => [item.id, item])).values()];
-      entry.cursor = payload.next_before;
-      entry.more = payload.has_more;
-    } catch (error) {
-      if (seq === entry.seq) entry.error = `评论加载失败：${error.message}`;
-    } finally {
-      if (seq === entry.seq) { entry.loading = false; renderComments(id); }
-    }
-  }
-
-  async function onCommentSubmit(event) {
-    const form = event.target;
-    if (!(form instanceof HTMLFormElement) || form.id !== "comment-form") return;
-    event.preventDefault();
-    const id = form.dataset.paperId;
-    const entry = commentState(id);
-    if (entry.posting) return;
-    const input = form.querySelector("textarea");
-    const content = input.value.trim();
-    entry.draft = input.value;
-    if (!content) { toast("请输入评论内容。", "error"); return; }
-    entry.posting = true;
-    entry.error = "";
-    ++entry.seq; // Ignore an older list response arriving during submission.
-    entry.loading = false;
-    input.disabled = true;
-    const button = form.querySelector('button[type="submit"]');
-    button.disabled = true;
-    button.textContent = "正在发送…";
-    try {
-      await api(`/api/papers/${encodeURIComponent(id)}/comments`, { method: "POST", body: { content } });
-      entry.draft = "";
-      if (state.selectedId === id) {
-        const current = $("#comment-input");
-        if (current) current.value = "";
-      }
-      toast("评论已发送。", "success");
-      await loadComments(id);
-    } catch (error) {
-      entry.error = error.message;
-      toast(`评论未发送：${error.message}`, "error");
-    } finally {
-      entry.posting = false;
-      if (state.selectedId === id) {
-        const current = $("#comment-input");
-        if (current) current.disabled = false;
-        const send = $('#comment-form button[type="submit"]');
-        if (send) { send.disabled = false; send.textContent = "发送评论"; }
-        renderComments(id);
-      }
-    }
-  }
-
   function onDocumentClick(event) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
@@ -1287,9 +1167,6 @@
       case "copy-text":
         copyText(actionEl.dataset.value || "", "路径已复制。");
         break;
-      case "load-comments":
-        loadComments(actionEl.dataset.paperId, true);
-        break;
       case "reload-day":
         loadDay(state.date, { silent: true });
         break;
@@ -1303,10 +1180,6 @@
 
   function onDocumentInput(event) {
     const target = event.target;
-    if (target instanceof HTMLTextAreaElement && target.id === "comment-input") {
-      commentState(target.dataset.paperId).draft = target.value;
-      return;
-    }
     if (!(target instanceof HTMLInputElement)) return;
     if (target.id === "search-input") {
       state.query = target.value;

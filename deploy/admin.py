@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import secrets
 import urllib.request
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 
 def init_admin_token(path: Path) -> None:
@@ -23,7 +23,6 @@ def main() -> None:
     sub=parser.add_subparsers(dest='command',required=True)
     sub.add_parser('init-token');sub.add_parser('status')
     run=sub.add_parser('run');run.add_argument('--date',required=True);run.add_argument('--refresh',action='store_true')
-    delete=sub.add_parser('delete-comment');delete.add_argument('comment_id')
     args=parser.parse_args()
     if args.command=='init-token':
         init_admin_token(args.token_file);print('Administrator token created:',args.token_file);return
@@ -35,7 +34,6 @@ def main() -> None:
     data=None
     if args.command=='run':
         path='/api/runs';method='POST';data=json.dumps({'date':args.date,'refresh':args.refresh}).encode()
-    elif args.command=='delete-comment':path='/api/comments/'+quote(args.comment_id,safe='');method='DELETE'
     else:path='/api/runs/active';method='GET'
     request=urllib.request.Request(url+path,data=data,method=method,
         headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})

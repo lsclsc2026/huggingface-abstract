@@ -62,3 +62,16 @@ def test_runtime_no_longer_recalculates_relevance(tmp_path,monkeypatch):
 def test_public_search_does_not_use_private_notes_as_a_match(public_client):
     payload=public_client.get('/api/search',params={'q':'PRIVATE NOTE SENTINEL'}).json()
     assert payload['papers']==[]
+
+
+def test_search_matches_only_public_analysis_fields(public_client):
+    runtime=public_client.app.state.runtime
+    # Historical bodies are preserved; private fields must not be search oracles.
+    with runtime.db.connect() as con:
+        con.execute('UPDATE papers SET analysis=? WHERE id=?',
+                    (json.dumps({'summary':'VISIBLE PUBLIC PHRASE','highlight':'HIDDEN HIGHLIGHT SENTINEL',
+                                 'relevance_score':'HIDDEN SCORE SENTINEL'}),'a'))
+    for query in ['HIDDEN HIGHLIGHT SENTINEL','HIDDEN SCORE SENTINEL']:
+        assert public_client.get('/api/search',params={'q':query}).json()['papers']==[]
+    found=public_client.get('/api/search',params={'q':'VISIBLE PUBLIC PHRASE'}).json()['papers']
+    assert [p['id'] for p in found]==['a']

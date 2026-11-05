@@ -10,7 +10,6 @@ services:
     environment:
       HF_PAPER_CONFIG: /etc/paper-daily/config.yaml
       HF_PAPER_ADMIN_TOKEN_FILE: /app/data/admin.token
-      HF_PAPER_COMMENTS_ENABLED: "${HF_PAPER_COMMENTS_ENABLED:-false}"
     volumes:
       - ./config.yaml:/etc/paper-daily/config.yaml:ro
       - ./data:/app/data

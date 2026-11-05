@@ -1,6 +1,6 @@
 # 公开阅读站部署（1.7.0）
 
-目标：朋友打开HTTPS网址即可阅读，不在访客电脑运行程序；不注册、不登录。按用户最新决定，本版评论仅按IP区分访客，不接入短信、人工凭证或身份会话，用户身份及权限体系后续开发。评论功能代码已实现，默认关闭发布。无GPU需求，模型通过外部API调用。
+目标：访客打开HTTPS网址即可阅读，无需注册登录。当前版本撤下评论功能，隐藏待读、个人兴趣/关键词设置与相关度；无GPU需求，模型通过外部API调用。
 
 ## 当前资源状态
 
@@ -8,7 +8,7 @@
 
 主要读者在国内。可考虑普通CPU云服务器；2026-11-05核对的[阿里云官方99计划](https://www.aliyun.com/activity/ecs/99program)为2核2G、3M固定带宽、40G盘、99元/年（活动资格与最终价格以结算为准），域名另计；不需要GPU实例、托管数据库或付费SSL证书。模型API费用仍单独发生。这里只记录选型信息，不代购、不承诺库存/资格或永久免费资源。
 
-使用中国内地服务器对外提供网站服务，需按接入商流程完成ICP备案，详情见[阿里云官方说明](https://www.alibabacloud.com/help/zh/icp-filing/basic-icp-service/product-overview/icp-filing-requirements-for-a-regular-website)。匿名阅读与匿名评论是两件事：国内公开跟帖评论需核对并满足后台身份认证等要求，IP/头像不能替代，见[网信办规定第四条](https://www.cac.gov.cn/2022-11/16/c_1670253725725039.htm)。`HF_PAPER_COMMENTS_ENABLED=false`是公开部署默认值，不等同于已完成评论上线资格确认。
+使用中国内地服务器对外提供网站服务，需按接入商流程完成ICP备案，详情见[阿里云官方说明](https://www.alibabacloud.com/help/zh/icp-filing/basic-icp-service/product-overview/icp-filing-requirements-for-a-regular-website)。当前不提供评论区或评论接口。
 
 ## Docker Compose + Caddy（新服务器推荐配置）
 
@@ -24,7 +24,7 @@ python3 deploy/admin.py --token-file data/admin.token init-token
 chmod 600 config.yaml .env
 ```
 
-编辑config.yaml中的模型配置和抓取源；`storage.data_dir`保持`./data`，schedule.enabled=true、间隔15、digest_time=16:00。编辑`.env`的`PAPER_DAILY_DOMAIN`为真实域名，默认关闭评论。
+编辑config.yaml中的模型配置和抓取源；`storage.data_dir`保持`./data`，schedule.enabled=true、间隔15、digest_time=16:00。编辑`.env`的`PAPER_DAILY_DOMAIN`为真实域名。
 
 容器应用以UID/GID 10001运行。在新部署目录由具备权限的管理员设置数据/配置权限：
 
@@ -40,12 +40,12 @@ curl -fsS https://你的域名/api/health
 ```
 
 - app容器只在专用网络暴露8765，没有宿主机公网端口映射；Caddy暴露80/443，自动申请和续期HTTPS证书。
-- 配置只读挂载，SQLite/评论/身份密钥/管理令牌持久化在data/；Caddy证书持久化在独立卷。
+- 配置只读挂载，SQLite/旧数据/管理令牌持久化在data/；Caddy证书持久化在独立卷。
 - 仅一个应用worker，禁止`--scale app=2`；该版本调度器仍在进程内。
 - `restart: unless-stopped`用于机器/容器异常后的进程恢复；健康检查用于就绪状态和依赖启动，不代表Docker会自动重启一切“unhealthy”状态。
-- 评论IP来自request.client；Caddy覆盖X-Forwarded-For，uvicorn只信任固定代理IP172.31.250.2。不能把可信代理设为`*`，不能给app再开放公网映射。修改网络时，`.env`中的代理IP与子网必须一致。
+- 代理请求来源由request.client取得；Caddy覆盖X-Forwarded-For，uvicorn只信任固定代理IP172.31.250.2。不能把可信代理设为`*`，不能给app再开放公网映射。修改网络时，`.env`中的代理IP与子网必须一致。
 - 不直接套用其他CDN/代理提供的访客头。如果以后增加外层代理，需单独核对可信边界与真实来源IP。
-- 全局请求体上限16KB，评论内容1–1000字。常规访问日志未启用，避免额外记录完整来源IP；排障日志仍应按实际配置管理。
+- 全局请求体上限16KB。常规访问日志未启用，避免额外记录完整来源IP；排障日志仍应按实际配置管理。
 
 ## 原生服务（已有systemd服务器）
 
@@ -60,7 +60,7 @@ sudo systemctl status paper-daily
 
 当前AutoDL容器没有systemd，不能把以上命令描述为已在AutoDL实现宿主机重启恢复。私有验证环境仍通过screen运行。
 
-## 管理与评论开关
+## 管理
 
 公开页面没有管理登录框或管理令牌。管理令牌是独立服务端秘密，不进入前端、Git、日志和命令行参数。
 
@@ -68,17 +68,16 @@ sudo systemctl status paper-daily
 # 原生服务/SSH隧道入口
 python3 deploy/admin.py --token-file data/admin.token status
 python3 deploy/admin.py --token-file data/admin.token run --date 2026-11-05
-python3 deploy/admin.py --token-file data/admin.token delete-comment 评论ID
 
 # Docker公开HTTPS入口，管理者在服务器上读取受限令牌文件
 sudo python3 deploy/admin.py --url https://你的域名 --token-file data/admin.token status
 ```
 
-`run --refresh`会显式重建所有单篇分析，产生模型费用，普通访客无权限触发。`GET /api/settings`和模型测试/重载、提取、旧私人字段修改、任务详情、API文档与删除评论均要求Bearer管理令牌。管理令牌未配置时拒绝管理操作，不因为请求来自本机或声称X-Forwarded-For=127.0.0.1就放行。
+`run --refresh`会显式重建所有单篇分析，产生模型费用，普通访客无权限触发。`GET /api/settings`和模型测试/重载、提取、旧私人字段修改、任务详情与API文档均要求Bearer管理令牌。管理令牌未配置时拒绝管理操作，不因为请求来自本机或声称X-Forwarded-For=127.0.0.1就放行。
 
 `HF_PAPER_ADMIN_TOKEN_FILE`或`HF_PAPER_ADMIN_TOKEN`提供令牌，优先环境变量。轮换文件内容后新请求即使用新令牌，注意同步管理员的受限令牌文件。不要把令牌写进URL。
 
-在隔离测试环境可以设置`HF_PAPER_COMMENTS_ENABLED=true`验证匿名评论；公开发布前先落实适用的评论身份核验方案，不能以该开关替代核验。配置更改后重建/重启应用进程。阅读一直无需登录。删除评论不重置发送限流；每来源IP15秒间隔、每小时20条。代理来源/NAT会使多用户共享限额。
+评论前端和API已撤下；遗留的HF_PAPER_COMMENTS_ENABLED环境变量不能恢复该功能。身份核验、登录及用户权限体系后续另行开发。
 
 ## 一致性备份与恢复
 
@@ -92,6 +91,6 @@ sudo python3 deploy/backup.py --data-dir data --config config.yaml --output back
 
 ## 验收边界
 
-交付前验证：公开API/导出无私人字段，管理请求未授权403，评论/XSS/分页/限流/删除测试、真实浏览器桌面与手机检查、备份恢复、单worker/持久化/代理边界。
+交付前验证：公开API/导出无私人字段，管理请求未授权403，评论接口不可用、待读/兴趣/相关度入口消失、真实浏览器桌面与手机检查、备份恢复、单worker/持久化/代理边界。
 
 本地未安装Docker的环境只能报告源码/YAML检查与原生应用验证；不得声称Docker镜像已构建或真实域名HTTPS已验收。服务器、域名和备案未落实前，公网网址及国内网络实测仍是待完成事项。
