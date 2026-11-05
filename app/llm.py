@@ -11,11 +11,13 @@ import httpx
 
 from .config import LLMConfig, ProfileConfig
 from .net import proxy_for
+from .relevance import score_relevance  # Compatibility for existing imports.
 from .prompts import (
     DIGEST_SYSTEM_PROMPT,
     PAPER_SYSTEM_PROMPT,
     build_digest_prompt,
     build_paper_prompt,
+    public_paper_order,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -248,7 +250,6 @@ class LLMClient:
     async def summarize_paper(self, paper: dict[str, Any]) -> dict[str, Any]:
         prompt = build_paper_prompt(paper, self.profile)
         system = PAPER_SYSTEM_PROMPT
-        system += f"\n\n本次输出语言：{self.profile.output_language}。"
         if self.config.system_prompt_extra:
             system += "\n\n额外要求：\n" + self.config.system_prompt_extra
         content = await self._chat(
@@ -268,7 +269,7 @@ class LLMClient:
         if not papers:
             return heuristic_digest(day, papers, self.profile)
         prompt = build_digest_prompt(day, papers, self.profile)
-        system = DIGEST_SYSTEM_PROMPT + f"\n\n本次输出语言：{self.profile.output_language}。"
+        system = DIGEST_SYSTEM_PROMPT
         content = await self._chat(
             [
                 {"role": "system", "content": system},
@@ -472,11 +473,6 @@ def _as_misconceptions(value: Any, limit: int = 3) -> list[dict[str, str]]:
 def normalize_analysis(
     raw: dict[str, Any], paper: dict[str, Any], profile: ProfileConfig
 ) -> dict[str, Any]:
-    score = _as_int(
-        raw.get("relevance_score", raw.get("relevance", 0)), 0, 0, 100
-    )
-    if not score:
-        score = score_relevance(paper, profile)[0]
     tags = _as_list(raw.get("tags"), limit=6)
     if not tags:
         tags = _as_list(paper.get("keywords"), limit=5)
@@ -515,15 +511,13 @@ def normalize_analysis(
         "why_it_matters": _clip(_text(raw.get("why_it_matters"), 500), 220),
         "limitations": _clip(_text(raw.get("limitations"), 500), 200),
         "takeaway": _clip(_text(raw.get("takeaway"), 400), 220),
-        "relevance_score": score,
         "tags": tags,
         "difficulty": difficulty,
         "read_minutes": _as_int(raw.get("read_minutes"), 12, 8, 30),
         "paper_type": paper_type,
         "code_available": bool(paper.get("github_url")),
-        "highlight": _as_bool(raw.get("highlight")) and score >= 75,
         "source": "llm",
-        "prompt_version": "beginner-v4",
+        "prompt_version": "beginner-shared-v5",
     }
 
 
@@ -551,47 +545,6 @@ def _sentences(text: str, count: int = 3) -> list[str]:
     return [part.strip() for part in parts if part.strip()][:count]
 
 
-def score_relevance(paper: dict[str, Any], profile: ProfileConfig) -> tuple[int, list[str]]:
-    text = " ".join(
-        [
-            str(paper.get("title") or ""),
-            str(paper.get("abstract") or ""),
-            str(paper.get("ai_summary") or ""),
-            " ".join(str(item) for item in (paper.get("keywords") or [])),
-        ]
-    ).lower()
-    terms = profile.interest_terms()
-    matches: list[str] = []
-    for term in terms:
-        needle = term.lower()
-        if len(needle) < 2:
-            continue
-        if needle in text:
-            matches.append(term)
-    # A single generic token should not make every paper "highly relevant".
-    unique_matches: list[str] = []
-    seen_tokens: set[str] = set()
-    for item in matches:
-        key = item.lower()
-        if key not in seen_tokens:
-            seen_tokens.add(key)
-            unique_matches.append(item)
-    score = 30.0
-    score += min(40.0, len(unique_matches) * 9.0)
-    score += min(12.0, float(paper.get("upvotes") or 0) * 1.1)
-    favorites = " ".join(profile.favorite_topics).lower()
-    if any(item.lower() in favorites for item in unique_matches):
-        score += 5
-    avoid = " ".join(profile.avoid_topics).lower()
-    if avoid and any(
-        topic.strip().lower() and topic.strip().lower() in text
-        for topic in profile.avoid_topics
-    ):
-        score -= 14
-    score = int(max(5, min(96, round(score))))
-    return score, unique_matches[:4]
-
-
 def heuristic_analysis(
     paper: dict[str, Any], profile: ProfileConfig
 ) -> dict[str, Any]:
@@ -606,15 +559,9 @@ def heuristic_analysis(
     key_points = [item for item in [purpose, methods, results, conclusion] if item][:4]
     if not key_points:
         key_points = sentences[:3] or [_clip(paper.get("title", ""), 100)]
-    score, matches = score_relevance(paper, profile)
     tags = _as_list(paper.get("keywords"), limit=6)
     if not tags:
-        tags = matches[:4] or ["HF Daily"]
-    why = (
-        "匹配你的关注方向：" + "、".join(matches) + "。"
-        if matches
-        else "未检测到与画像的明显关联，可快速浏览摘要后决定。"
-    )
+        tags = ["HF Daily"]
     tldr = _clip(plain_summary or paper.get("title", ""), 140)
     problem = purpose or (sentences[0] if sentences else "")
     return {
@@ -631,18 +578,16 @@ def heuristic_analysis(
         "key_points": [_clip(item, 120) for item in key_points],
         "method": _clip(methods, 160),
         "findings": _clip(results or conclusion, 220),
-        "why_it_matters": why,
+        "why_it_matters": "请结合论文的问题、方法和证据判断其一般用途；规则摘要不补充原文之外的结论。",
         "limitations": "尚未启用私有模型，本摘要由规则提取，未判断方法与证据质量。",
         "takeaway": _clip(results or conclusion or tldr, 220),
-        "relevance_score": score,
         "tags": tags,
         "difficulty": "进阶",
         "read_minutes": max(5, min(20, round(len(abstract.split()) / 180) + 5)),
         "paper_type": "分析",
         "code_available": bool(paper.get("github_url")),
-        "highlight": score >= 80,
         "source": "heuristic",
-        "prompt_version": "heuristic-v4",
+        "prompt_version": "heuristic-shared-v5",
     }
 
 
@@ -748,9 +693,7 @@ def normalize_digest(
     raw: dict[str, Any], day: str, papers: list[dict[str, Any]]
 ) -> dict[str, Any]:
     valid_ids = {paper["id"] for paper in papers}
-    sorted_papers = sorted(
-        papers, key=lambda item: float(item.get("relevance") or 0), reverse=True
-    )
+    sorted_papers = public_paper_order(papers)
     themes: list[dict[str, str]] = []
     for theme in raw.get("themes") or []:
         if isinstance(theme, dict):
@@ -824,7 +767,7 @@ def normalize_digest(
     if not overview:
         overview = (
             f"今日 Hugging Face Daily Papers 共收录 {len(papers)} 篇论文，"
-            f"以下内容已按你的研究画像排序。"
+            "以下是当天研究主题与统一阅读建议。"
         )
     return {
         "headline": headline,
@@ -837,7 +780,7 @@ def normalize_digest(
         "reading_order": order,
         "skip_hint": _clip(_text(raw.get("skip_hint"), 200), 100),
         "source": "llm",
-        "prompt_version": "digest-v4",
+        "prompt_version": "digest-shared-v5",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
@@ -857,23 +800,19 @@ def heuristic_digest(
             "reading_order": [],
             "skip_hint": "",
             "source": "heuristic",
-            "prompt_version": "digest-heuristic-v4",
+            "prompt_version": "digest-heuristic-shared-v5",
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
-    sorted_papers = sorted(
-        papers, key=lambda item: float(item.get("relevance") or 0), reverse=True
-    )
+    sorted_papers = public_paper_order(papers)
     themes = _themes_from_papers(sorted_papers)
     top = sorted_papers[0]
     top_analysis = top.get("analysis") or {}
-    relevant = sum(1 for item in papers if float(item.get("relevance") or 0) >= 70)
     headline = _clip(f"今日 {len(papers)} 篇，先看这 {max(1, min(3, len(themes)))} 个方向", 60)
     overview = (
         f"今日 Hugging Face Daily Papers 共收录 {len(papers)} 篇论文，"
-        f"其中 {relevant} 篇与你的研究画像高度相关。"
         f"当前排在首位的是《{top_analysis.get('title_zh') or top.get('title', '')}》："
         f"{_clip(top_analysis.get('tldr') or top.get('ai_summary', ''), 130)}"
-        " 当前未启用模型导读，排序综合了关键词匹配与社区热度。"
+        " 当前为统一规则导读，阅读顺序参考社区热度。"
     )
     picks = []
     for paper in sorted_papers[:3]:
@@ -912,7 +851,7 @@ def heuristic_digest(
         "reading_order": [paper["id"] for paper in sorted_papers],
         "skip_hint": "先读相关度 70 以上的论文；其余可只浏览标题和摘要。",
         "source": "heuristic",
-        "prompt_version": "digest-heuristic-v4",
+        "prompt_version": "digest-heuristic-shared-v5",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 

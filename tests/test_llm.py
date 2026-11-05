@@ -16,7 +16,7 @@ from app.llm import (
     normalize_digest,
     score_relevance,
 )
-from app.prompts import PAPER_SYSTEM_PROMPT
+from app.prompts import PAPER_SYSTEM_PROMPT, build_paper_prompt, build_digest_prompt
 
 
 PROFILE = ProfileConfig(
@@ -75,7 +75,7 @@ def test_heuristic_analysis_extracts_sections():
     assert "tool-using agents" in analysis["key_points"][0]
     assert "12%" in analysis["findings"]
     assert analysis["code_available"] is True
-    assert analysis["prompt_version"] == "heuristic-v4"
+    assert analysis["prompt_version"] == "heuristic-shared-v5"
     assert analysis["analogy"] == ""
     assert analysis["jargon"] == []
 
@@ -178,8 +178,8 @@ async def test_llm_retries_without_json_mode():
     finally:
         await client.close()
     assert analysis["source"] == "llm"
-    assert analysis["relevance_score"] == 88
-    assert analysis["prompt_version"] == "beginner-v4"
+    assert "relevance_score" not in analysis
+    assert analysis["prompt_version"] == "beginner-shared-v5"
     assert analysis["analogy"].startswith("可以把它想成")
     assert analysis["jargon"][0]["term"] == "强化学习"
     assert analysis["contrast"].startswith("旧做法")
@@ -277,10 +277,71 @@ def test_normalize_digest_v3_rich_fields():
         "top_picks": [{"id": "a", "reason": "相关。"}],
     }
     digest = normalize_digest(raw, "2026-11-04", papers)
-    assert digest["prompt_version"] == "digest-v4"
+    assert digest["prompt_version"] == "digest-shared-v5"
     assert digest["primer"][0]["paper_ids"] == ["a"]
     assert digest["threads"][0]["name"] == "训练环境更真实"
     assert digest["threads"][0]["boundary"] == "还不等于真实企业环境。"
     assert digest["reading_path"][0]["before"] == "先懂长程任务。"
     assert digest["reading_order"][0] == "a"
     assert "questions" not in digest
+
+
+def test_personal_profile_cannot_change_shared_prompts():
+    other = ProfileConfig(role="医生", interests=["医学"], notes="只讲医疗例子",
+                          output_language="English", favorite_topics=["biology"])
+    assert build_paper_prompt(paper(), PROFILE) == build_paper_prompt(paper(), other)
+    a = [paper(id="a", relevance=100, analysis={"relevance_score": 99}),
+         paper(id="b", relevance=0, upvotes=20)]
+    b = [paper(id="b", relevance=100, upvotes=20),
+         paper(id="a", relevance=0, analysis={"relevance_score": 1})]
+    assert build_digest_prompt("2026-11-05", a, PROFILE) == build_digest_prompt("2026-11-05", b, other)
+
+
+def test_model_scores_and_personal_profile_are_not_stored_in_public_analysis():
+    raw = {"summary": "Shared explanation", "relevance_score": 99, "highlight": True}
+    first = normalize_analysis(raw, paper(), PROFILE)
+    second = normalize_analysis(raw, paper(), ProfileConfig(interests=["vision"]))
+    assert first == second
+    assert "relevance_score" not in first
+    assert "highlight" not in first
+
+
+def test_rule_fallbacks_are_shared_across_profiles():
+    other = ProfileConfig(interests=["vision"], notes="写成诗")
+    assert heuristic_analysis(paper(), PROFILE) == heuristic_analysis(paper(), other)
+    a = [paper(id='a', relevance=100), paper(id='b', relevance=0, upvotes=20)]
+    b = [paper(id='b', relevance=100, upvotes=20), paper(id='a', relevance=0)]
+    first = heuristic_digest('2026-11-05', a, PROFILE)
+    second = heuristic_digest('2026-11-05', b, other)
+    first.pop('generated_at', None)
+    second.pop('generated_at', None)
+    assert first == second
+
+
+def test_relevance_ignores_popularity_hidden_favorites_and_model_fields():
+    profile = ProfileConfig(interests=['Agent', '机器人'], favorite_topics=['vision'])
+    original = paper(title='Agent systems', abstract='', keywords=[], ai_summary='', upvotes=0)
+    changed = dict(original, upvotes=999, analysis={'relevance_score':99, 'tags':['机器人']})
+    assert score_relevance(original, profile)[0] == 50
+    assert score_relevance(changed, profile)[0] == 50
+    assert score_relevance(paper(title='Vision', abstract='', keywords=[], ai_summary=''), profile)[0] == 0
+    assert score_relevance(paper(title='Robotics', abstract='', keywords=[], ai_summary=''),
+                           ProfileConfig(interests=['机器人']))[0] == 100
+
+
+@pytest.mark.asyncio
+async def test_actual_model_requests_are_identical_for_different_profiles():
+    bodies = []
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={'choices':[{'message':{'content':'{"summary":"Shared"}'}}]})
+    for profile in [PROFILE, ProfileConfig(interests=['医学'], notes='用英语写', output_language='English')]:
+        client = LLMClient(LLMConfig(api_key='test', model='mock'), profile)
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            await client.summarize_paper(paper())
+            await client.generate_digest('2026-11-05', [paper()])
+        finally:
+            await client.close()
+    assert bodies[0] == bodies[2]
+    assert bodies[1] == bodies[3]

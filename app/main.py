@@ -56,6 +56,10 @@ class Runtime:
         self.settings = settings
         self.db = db
         self.service = ExtractionService(settings, db)
+        # Re-score legacy records using the current fixed rule, without touching
+        # shared analysis or issuing model requests.
+        for paper in db.all_papers():
+            db.update_relevance(paper["id"], score_relevance(paper, settings.profile)[0])
 
     @staticmethod
     def _apply_saved_profile(settings: Settings, db: Database) -> None:

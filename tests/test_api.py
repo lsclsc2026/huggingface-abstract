@@ -150,6 +150,12 @@ def test_profile_update_validates_and_rescores(tmp_path, monkeypatch):
                 },
             ]
         )
+        runtime.db.update_paper_analysis('p-agent', {
+            'summary': 'Shared content', 'relevance_score': 99, 'highlight': True
+        }, 'ok', 'llm')
+        run = runtime.db.create_run('2026-11-04', False)
+        runtime.db.set_digest(run['id'], {'headline': 'Shared digest'})
+        runtime.db.update_run(run['id'], status='completed')
         response = client.put(
             "/api/profile",
             json={"interests": ["Agent"], "notes": "先讲结论"},
@@ -162,6 +168,14 @@ def test_profile_update_validates_and_rescores(tmp_path, monkeypatch):
         papers = client.get("/api/days/2026-11-04").json()["papers"]
         assert papers[0]["id"] == "p-agent"
         assert papers[0]["relevance"] > papers[1]["relevance"]
+        assert 'relevance_score' not in papers[0]['analysis']
+        assert 'highlight' not in papers[0]['analysis']
+        response = client.put('/api/profile', json={'interests':['vision'], 'notes':'换种风格'})
+        assert response.status_code == 200
+        payload = client.get('/api/days/2026-11-04').json()
+        assert payload['papers'][0]['id'] == 'p-vision'
+        assert payload['digest'] == {'headline': 'Shared digest'}
+        assert client.get('/api/papers/p-agent').json()['paper']['analysis']['summary'] == 'Shared content'
 
         too_many = [f"kw{i}" for i in range(13)]
         assert client.put("/api/profile", json={"interests": too_many}).status_code == 400

@@ -24,7 +24,7 @@ PAPER_SYSTEM_PROMPT = """你是一位擅长把 AI 论文讲给普通读者听的
 9. 举例要诚实：可以是论文场景的具象化，也可以构造帮助理解的假设场景；如果是假设，必须写“假设场景，不是论文实验”。绝不能编造数字、用户、公司或实验结果。
 10. 面向新手，但不降智：像给聪明的高中毕业生或产品经理讲；不要用“小伙伴们”“很简单”，也不要用“赋能、范式、颠覆、革命性”等空话。
 11. 篇幅要够，但不要注水：整体正文约 1500-2200 个中文字符。短句优先，每段只讲一个意思。
-12. 输出语言使用读者指定的语言（默认简体中文）；模型名、方法名、数据集名等专有名词保留英文，并在必要时用中文解释。
+12. 所有读者共享同一份简体中文解读；模型名、方法名、数据集名等专有名词保留英文，并在必要时用中文解释。不根据个人兴趣、身份或风格改写。
 
 只输出一个合法 JSON 对象，不要 Markdown 代码围栏，不要前后解释，不要输出公式，也不要输出内部推理过程。
 
@@ -55,16 +55,14 @@ JSON 字段与要求：
   "key_points": ["4-6 条关键信息，每条不超过 50 字，尽量说人话"],
   "method": "给进阶读者的一句话方法概括，60-100 字；不要重复 summary",
   "findings": "摘要给出的主要结果与证据，80-150 字；没有具体数字就定性描述，不得虚构",
-  "why_it_matters": "结合读者画像，说明为什么值得他看、可能用在哪里，80-140 字",
+  "why_it_matters": "说明研究的一般意义与潜在用途，不结合任何个人画像，80-140 字",
   "limitations": "适用范围、前提条件或摘要没有交代的部分，60-110 字；不要做泛泛的学术评价",
   "takeaway": "如果只记住一件事，应该记住什么？50-90 字",
-  "relevance_score": 0,
   "tags": ["3-6 个简短标签，中英文均可"],
   "difficulty": "入门",
   "read_minutes": 12,
   "paper_type": "方法",
-  "code_available": false,
-  "highlight": false
+  "code_available": false
 }
 
 jargon 收 3-5 个真正会卡住理解的术语，不要收普通词，不要超过 5 个。
@@ -72,8 +70,7 @@ misconceptions 收 2-3 个读者最可能产生的误读，不要为了凑数硬
 difficulty 只能是「入门」「进阶」「硬核」；面向新手解释时也要保留真实难度，不要一律写入门。
 paper_type 只能是「方法」「模型」「评测」「数据集」「综述」「系统」「分析」「应用」之一。
 read_minutes 是精读所需分钟数，10-25 的整数。
-relevance_score 是 0-100 的整数，表示与读者研究画像的相关程度，70 以上才值得优先读。
-highlight 仅在 relevance_score >= 80 且确有新意时为 true。
+不输出个人相关度或个人推荐评分；相关度由独立规则计算。
 """
 
 DIGEST_SYSTEM_PROMPT = """你是一位既懂 AI 研究、又擅长给普通读者讲课的日报主编。读者聪明、有产品或工程背景，但不是 AI 专业研究者。他刚看到一堆论文标题和术语，需要你先把“今天发生了什么”讲清楚，再决定读什么。
@@ -90,13 +87,13 @@ DIGEST_SYSTEM_PROMPT = """你是一位既懂 AI 研究、又擅长给普通读�
 3. 不要堆缩写和指标。每出现一个关键术语，先用一句人话解释；数字要说明和什么比、在什么条件下。
 4. 解释知识本身，不做论文评审：不要判断是否“学术包装”、是否“颠覆”，也不要给作者打分。只讲清楚它说了什么、依据是什么、适用边界在哪里。
 5. 读者读完导读后，应该能理解当天的主要问题，不需要再追问“这些名词是什么意思”。
-6. 使用读者指定的输出语言（默认简体中文），整体正文约 1700-2400 个中文字符。
+6. 使用统一的简体中文，整体正文约 1700-2400 个中文字符。所有读者共享同一导读，不按个人画像选文或调整内容。
 7. 只使用输入中出现过的论文 id。只输出一个合法 JSON 对象，不要 Markdown 代码围栏，不要输出内部推理过程。
 
 JSON 字段：
 {
   "headline": "用大白话说今天最值得注意的转变，不超过 45 字",
-  "overview": "350-550 字的当天总览：这批论文共同在解决什么？为什么现在值得关心？和读者画像有什么关系？",
+  "overview": "350-550 字的当天总览：这批论文共同在解决什么？为什么现在值得关心？有哪些普遍意义？",
   "primer": [
     {
       "term": "今天最卡人的术语",
@@ -129,18 +126,14 @@ JSON 字段：
 
 primer 3-5 个；threads 2-4 条；reading_path 3-5 篇；top_picks 3-5 篇。
 paper_ids 只能使用输入中存在的 id。reading_path 和 top_picks 也必须使用真实 id。
-读者画像只用于判断相关性，不要把画像原文复述进输出。
+按论文内容组织导读，不使用个人兴趣或个人分数。
 """
 
 
 def build_paper_prompt(paper: dict[str, Any], profile: ProfileConfig) -> str:
     keywords = "、".join(paper.get("keywords") or [])
     authors = ", ".join((paper.get("authors") or [])[:12])
-    profile_block = profile_to_text(profile)
-    return f"""读者画像：
-{profile_block}
-
-请把下面这篇论文讲给一个没读过 AI 论文的聪明朋友听。先找出 3-5 个会卡住他的概念并按依赖解释，再讲问题、旧做法、本文的改动、最容易误解的地方和适用边界。不要写成英文摘要的直译，也不要替作者做宣传。只输出 JSON。
+    return f"""请用统一的简体中文，把下面这篇论文讲给一个没读过 AI 论文的聪明朋友听。先找出 3-5 个会卡住他的概念并按依赖解释，再讲问题、旧做法、本文的改动、最容易误解的地方和适用边界。不要写成英文摘要的直译，也不要替作者做宣传。只输出 JSON。
 
 <paper>
 id: {paper.get('id', '')}
@@ -162,9 +155,8 @@ HF 社区点赞: {paper.get('upvotes', 0)}
 def build_digest_prompt(
     day: str, papers: list[dict[str, Any]], profile: ProfileConfig
 ) -> str:
-    profile_block = profile_to_text(profile)
     compact: list[dict[str, Any]] = []
-    for paper in papers:
+    for paper in public_paper_order(papers):
         analysis = paper.get("analysis") or {}
         jargon = []
         for item in (analysis.get("jargon") or [])[:3]:
@@ -199,7 +191,6 @@ def build_digest_prompt(
                 ],
                 "findings": _short(analysis.get("findings", ""), 100),
                 "limitations": _short(analysis.get("limitations", ""), 80),
-                "relevance": analysis.get("relevance_score", paper.get("relevance", 0)),
                 "tags": analysis.get("tags", []),
                 "type": analysis.get("paper_type", ""),
                 "upvotes": paper.get("upvotes", 0),
@@ -209,7 +200,6 @@ def build_digest_prompt(
     payload = {
         "date": day,
         "paper_count": len(papers),
-        "reader_profile": profile_block,
         "papers": compact,
     }
     return (
@@ -220,19 +210,9 @@ def build_digest_prompt(
     )
 
 
-def profile_to_text(profile: ProfileConfig) -> str:
-    interests = "\n".join(f"- {item}" for item in profile.interests) or "- 未指定"
-    favorites = "、".join(profile.favorite_topics) or "未指定"
-    avoid = "、".join(profile.avoid_topics) or "无"
-    notes = profile.notes.strip() or "无"
-    return (
-        f"身份：{profile.role}\n"
-        f"关注方向：\n{interests}\n"
-        f"重点追踪：{favorites}\n"
-        f"不想看：{avoid}\n"
-        f"补充说明：{notes}\n"
-        f"输出语言：{profile.output_language}"
-    )
+def public_paper_order(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Shared selection uses public popularity, with a stable ID tie break."""
+    return sorted(papers, key=lambda paper: (-int(paper.get("upvotes") or 0), paper["id"]))
 
 
 def _clip(text: str, limit: int) -> str:

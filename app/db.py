@@ -281,13 +281,14 @@ class Database:
         source: str,
         error: str = "",
     ) -> None:
-        relevance = float(analysis.get("relevance_score", 0) or 0)
+        analysis = {key: value for key, value in analysis.items()
+                    if key not in {"relevance_score", "highlight"}}
         with self.connect() as conn:
             conn.execute(
                 """
                 UPDATE papers
                 SET analysis = ?, analysis_status = ?, analysis_source = ?,
-                    analysis_error = ?, relevance = ?, updated_at = ?
+                    analysis_error = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -295,7 +296,6 @@ class Database:
                     status,
                     source,
                     error[:2000],
-                    relevance,
                     utc_now(),
                     paper_id,
                 ),
@@ -361,23 +361,10 @@ class Database:
     def update_relevance(self, paper_id: str, relevance: float) -> None:
         relevance = max(0.0, min(100.0, float(relevance)))
         with self.connect() as conn:
-            row = conn.execute(
-                "SELECT analysis FROM papers WHERE id = ?", (paper_id,)
-            ).fetchone()
-            if not row:
-                return
-            analysis = _json_value(row["analysis"], None)
-            if isinstance(analysis, dict):
-                analysis["relevance_score"] = int(round(relevance))
-                conn.execute(
-                    "UPDATE papers SET relevance = ?, analysis = ?, updated_at = ? WHERE id = ?",
-                    (relevance, json.dumps(analysis, ensure_ascii=False), utc_now(), paper_id),
-                )
-            else:
-                conn.execute(
-                    "UPDATE papers SET relevance = ?, updated_at = ? WHERE id = ?",
-                    (relevance, utc_now(), paper_id),
-                )
+            conn.execute(
+                "UPDATE papers SET relevance = ?, updated_at = ? WHERE id = ?",
+                (relevance, utc_now(), paper_id),
+            )
 
     def get_setting(self, key: str) -> str | None:
         with self.connect() as conn:
@@ -519,6 +506,11 @@ def _paper_row(row: sqlite3.Row) -> dict[str, Any]:
     paper["authors"] = _json_value(paper.get("authors"), [])
     paper["raw"] = _json_value(paper.pop("raw_json", None), {})
     paper["analysis"] = _json_value(paper.get("analysis"), None)
+    if isinstance(paper["analysis"], dict):
+        # Legacy records can contain model/person-specific scores. Keep stored
+        # text intact, but never expose those fields as shared content.
+        paper["analysis"].pop("relevance_score", None)
+        paper["analysis"].pop("highlight", None)
     paper["bookmarked"] = bool(paper.get("bookmarked"))
     paper["relevance"] = float(paper.get("relevance") or 0)
     paper["has_pdf"] = bool(paper.get("pdf_path"))

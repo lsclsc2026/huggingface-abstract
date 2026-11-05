@@ -953,7 +953,7 @@
 
   function paperCard(paper, index) {
     const analysis = analysisOf(paper);
-    const score = Math.round(Number(analysis.relevance_score ?? paper.relevance ?? 0));
+    const score = Math.round(Number(paper.relevance ?? 0));
     const title = analysis.title_zh || paper.title;
     const showOriginal = analysis.source === "llm" && title.trim() !== paper.title.trim();
     const tags = paperTags(paper, 4);
@@ -1040,7 +1040,7 @@
     const root = $("#detail-root");
     if (!root) return;
     const analysis = analysisOf(paper);
-    const score = Math.round(Number(analysis.relevance_score ?? paper.relevance ?? 0));
+    const score = Math.round(Number(paper.relevance ?? 0));
     const title = analysis.title_zh || paper.title;
     const showOriginal = title.trim() !== String(paper.title).trim();
     const tags = paperTags(paper, 6);
