@@ -1,6 +1,6 @@
 # 公开阅读站部署（1.7.0）
 
-目标：朋友打开HTTPS网址即可阅读，不在访客电脑运行程序；不注册、不登录。评论功能代码已实现，默认关闭发布。无GPU需求，模型通过外部API调用。
+目标：朋友打开HTTPS网址即可阅读，不在访客电脑运行程序；不注册、不登录。按用户最新决定，本版评论仅按IP区分访客，不接入短信、人工凭证或身份会话，用户身份及权限体系后续开发。评论功能代码已实现，默认关闭发布。无GPU需求，模型通过外部API调用。
 
 ## 当前资源状态
 
@@ -8,7 +8,7 @@
 
 主要读者在国内。可考虑普通CPU云服务器；2026-11-05核对的[阿里云官方99计划](https://www.aliyun.com/activity/ecs/99program)为2核2G、3M固定带宽、40G盘、99元/年（活动资格与最终价格以结算为准），域名另计；不需要GPU实例、托管数据库或付费SSL证书。模型API费用仍单独发生。这里只记录选型信息，不代购、不承诺库存/资格或永久免费资源。
 
-使用中国内地服务器对外提供网站服务，需按接入商流程完成ICP备案，详情见[阿里云官方说明](https://www.alibabacloud.com/help/zh/icp-filing/basic-icp-service/product-overview/icp-filing-requirements-for-a-regular-website)。匿名阅读与匿名评论是两件事：国内公开跟帖评论需核对并满足后台身份认证等要求，IP/头像不能替代，见[网信办规定第五条](https://www.cac.gov.cn/2022-11/16/c_1670253725725039.htm)。`HF_PAPER_COMMENTS_ENABLED=false`是公开部署默认值，不等同于已完成评论上线资格确认。
+使用中国内地服务器对外提供网站服务，需按接入商流程完成ICP备案，详情见[阿里云官方说明](https://www.alibabacloud.com/help/zh/icp-filing/basic-icp-service/product-overview/icp-filing-requirements-for-a-regular-website)。匿名阅读与匿名评论是两件事：国内公开跟帖评论需核对并满足后台身份认证等要求，IP/头像不能替代，见[网信办规定第四条](https://www.cac.gov.cn/2022-11/16/c_1670253725725039.htm)。`HF_PAPER_COMMENTS_ENABLED=false`是公开部署默认值，不等同于已完成评论上线资格确认。
 
 ## Docker Compose + Caddy（新服务器推荐配置）
 

@@ -96,3 +96,15 @@ def test_comments_default_closed_and_switch_does_not_remove_data(public_client,m
     assert payload['enabled'] is False
     monkeypatch.setenv('HF_PAPER_COMMENTS_ENABLED','true')
     assert len(public_client.get('/api/papers/a/comments').json()['comments'])==1
+
+
+def test_anonymous_comments_need_no_identity_but_reject_cross_site_posts(public_client):
+    public_client.cookies.clear()
+    url='/api/papers/a/comments'
+    for origin in ('https://unrelated.example','null','http://[broken'):
+        response=public_client.post(url,json={'content':'cross-site'},headers={'Origin':origin})
+        assert response.status_code==403
+    assert public_client.get(url).json()['comments']==[]
+    response=public_client.post(url,json={'content':'无需登录'},headers={'Origin':'http://testserver'})
+    assert response.status_code==201
+    assert public_client.get('/api/comment-auth').status_code==404

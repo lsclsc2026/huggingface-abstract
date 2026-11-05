@@ -18,10 +18,11 @@ from . import __version__
 from .config import BASE_DIR, ConfigError, Settings, load_settings
 from .db import Database
 from .exporting import build_json, build_markdown
+from .hf import HFClient
 from .llm import LLMClient, LLMError
 from .service import ExtractionService, digest_due
 from .public import public_paper, public_run, reader_settings
-from .security import require_admin
+from .security import require_admin, require_same_origin
 from .comments import Comments, CommentCreate, comments_enabled, MAX_LENGTH, MIN_INTERVAL
 
 LOGGER = logging.getLogger(__name__)
@@ -407,6 +408,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/papers/{paper_id}/comments", status_code=201)
     async def create_comment(request: Request, paper_id: str, body: CommentCreate) -> dict[str, Any]:
+        require_same_origin(request)
         if not comments_enabled():
             raise HTTPException(status_code=403, detail="评论发布暂未开放。")
         if not request.client:
