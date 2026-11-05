@@ -12,3 +12,9 @@ config.yaml
 node_modules/
 
 backup/
+conversation.md
+.superpowers/
+.worktrees/
+dist/
+*.tar.gz
+*.zip
