@@ -100,11 +100,9 @@ def test_api_day_flags_and_export(tmp_path, monkeypatch):
         assert response.status_code == 200
         assert "A Local Paper" in response.text
         assert "local note" not in response.text
-        assert "读之前，先认识这几个词" in response.text
-        assert "可以把它想成整理书架" in response.text
-        assert "假设一个本地场景" in response.text
-        assert "和原来的做法比" in response.text
-        assert "容易理解错的地方" in response.text
+        assert '读之前，先认识这几个词' not in response.text
+        assert response.text.index('### 英文摘要原文') < response.text.index('### 摘要') < response.text.index('**token**') < response.text.index('### 方法') < response.text.index('### 主要贡献')
+        assert '可以把它想成整理书架' not in response.text
 
         response = client.get("/api/days/2026-11-04/export.json")
         assert response.status_code == 200

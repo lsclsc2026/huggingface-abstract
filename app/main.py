@@ -21,6 +21,7 @@ from .exporting import build_json, build_markdown
 from .hf import HFClient
 from .llm import LLMClient, LLMError
 from .service import ExtractionService, digest_due
+from .briefing import compose as compose_briefing
 from .public import public_paper, public_run, reader_settings
 from .security import require_admin
 
@@ -91,64 +92,19 @@ class Runtime:
             self._scheduler_loop(), name="paper-daily-scheduler"
         )
 
-    async def _has_new_papers(self, day: str) -> bool:
-        hf = HFClient(self.settings.fetch)
-        try:
-            papers = await hf.fetch_daily(day, enrich_details=False)
-        except Exception as exc:
-            LOGGER.warning("Scheduled HF check failed: %s", exc)
-            return False
-        existing = self.db.get_papers_for_date(day)
-        existing_ids = {paper["id"] for paper in existing}
-        return (
-            any(not paper.get("analysis") for paper in existing)
-            or any(paper["id"] not in existing_ids for paper in papers)
-        )
-
     async def _scheduler_tick(self) -> None:
-        if not self.settings.schedule.enabled:
-            return
-        now = self.settings.now()
-        today = now.date().isoformat()
-        interval = self.settings.schedule.check_interval_minutes * 60
-        digest_window = digest_due(self.settings, today)
-        digest_missing = not self.db.digest_for_day(today)
-        active = self.db.active_run()
-        retry_due = (
-            self._last_digest_attempt is None
-            or self._last_digest_attempt.date() != now.date()
-            or (now - self._last_digest_attempt).total_seconds() >= interval
-        )
-
-        if (
-            digest_window
-            and digest_missing
-            and retry_due
-            and not active
-        ):
-            self._last_digest_attempt = now
-            try:
-                self.start(today, False, sequential=True)
-                # A digest run also fetches the current daily list.
-                self._last_check = now
-                LOGGER.info("Scheduler started missing-digest run for %s", today)
-            except Exception as exc:
-                LOGGER.warning("Scheduler could not start digest run: %s", exc)
-            return
-
-        due = self._last_check is None or (now - self._last_check).total_seconds() >= interval
-        if due and not active:
-            self._last_check = now
-            if await self._has_new_papers(today):
-                try:
-                    self.start(today, False, sequential=True)
-                    LOGGER.info("Scheduler found new papers for %s", today)
-                except Exception as exc:
-                    LOGGER.warning("Scheduler could not start new-paper run: %s", exc)
+        if not self.settings.schedule.enabled:return
+        now=self.settings.now()
+        interval=self.settings.schedule.check_interval_minutes*60
+        if self.db.active_run():return
+        if self._last_check is not None and (now-self._last_check).total_seconds()<interval:return
+        self._last_check=now
+        # Service fetches the daily list once; no preliminary duplicate request.
+        self.start(self.settings.today(),False)
 
     async def _scheduler_loop(self) -> None:
         LOGGER.info(
-            "Scheduler started: every %s min, digest at %s",
+            "Scheduler started: every %s min, live briefing (legacy time %s ignored)",
             self.settings.schedule.check_interval_minutes,
             self.settings.schedule.digest_time,
         )
@@ -281,6 +237,10 @@ def create_app() -> FastAPI:
             "active_run": public_run(active),
         }
 
+    @app.get("/api/admin/usage", dependencies=[Depends(require_admin)])
+    async def model_usage(request: Request) -> dict[str, Any]:
+        return _runtime(request).service.store.usage()
+
     @app.get("/api/settings", dependencies=[Depends(require_admin)])
     async def settings_api(request: Request) -> dict[str, Any]:
         return _runtime(request).settings.public_settings()
@@ -345,9 +305,10 @@ def create_app() -> FastAPI:
         runtime = _runtime(request)
         day = _valid_day(day)
         papers = runtime.db.get_papers_for_date(day)
-        digest = runtime.db.digest_for_day(day)
+        saved_digest = runtime.db.digest_for_day(day)
+        digest = compose_briefing(day,papers,saved_digest) if papers and runtime.settings.digest.enabled else None
         due = digest_due(runtime.settings, day)
-        if digest:
+        if digest and digest.get("overview_status")=="ready":
             digest_status = "ready"
         elif not papers:
             digest_status = "empty"
@@ -360,7 +321,7 @@ def create_app() -> FastAPI:
             "papers": [public_paper(paper) for paper in papers],
             "digest": digest,
             "digest_status": digest_status,
-            "digest_time": runtime.settings.schedule.digest_time,
+            "digest_mode": "live",
             "summary": {key: value for key, value in runtime.db.day_summary(day).items() if key in {"total", "with_github", "failed"}},
             "latest_run": public_run(runtime.db.latest_run(day)),
             "active_run": public_run(runtime.db.active_run(day)),
@@ -440,7 +401,7 @@ def create_app() -> FastAPI:
         papers = [public_paper(paper) for paper in runtime.db.get_papers_for_date(day)]
         if not papers:
             raise HTTPException(status_code=404, detail="这一天还没有可导出的论文。")
-        digest = runtime.db.digest_for_day(day)
+        digest = compose_briefing(day,papers,runtime.db.digest_for_day(day)) if runtime.settings.digest.enabled else None
         content = build_markdown(day, papers, digest, runtime.settings)
         filename = f"hf-papers-{day}.md"
         return Response(
@@ -456,7 +417,7 @@ def create_app() -> FastAPI:
         papers = [public_paper(paper) for paper in runtime.db.get_papers_for_date(day)]
         if not papers:
             raise HTTPException(status_code=404, detail="这一天还没有可导出的论文。")
-        digest = runtime.db.digest_for_day(day)
+        digest = compose_briefing(day,papers,runtime.db.digest_for_day(day)) if runtime.settings.digest.enabled else None
         content = build_json(day, papers, digest)
         filename = f"hf-papers-{day}.json"
         return Response(

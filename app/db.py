@@ -469,7 +469,7 @@ class Database:
         if day:
             query += " AND date = ?"
             params = (day,)
-        query += " ORDER BY created_at DESC LIMIT 1"
+        query += " ORDER BY created_at DESC, rowid DESC LIMIT 1"
         with self.connect() as conn:
             row = conn.execute(query, params).fetchone()
         return _run_row(row) if row else None
@@ -477,7 +477,7 @@ class Database:
     def latest_run(self, day: str) -> dict[str, Any] | None:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT * FROM runs WHERE date = ? ORDER BY created_at DESC LIMIT 1",
+                "SELECT * FROM runs WHERE date = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
                 (day,),
             ).fetchone()
         return _run_row(row) if row else None
@@ -515,7 +515,7 @@ class Database:
                 """
                 SELECT digest FROM runs
                 WHERE date = ? AND digest IS NOT NULL AND digest != ''
-                ORDER BY created_at DESC LIMIT 1
+                ORDER BY created_at DESC, rowid DESC LIMIT 1
                 """,
                 (day,),
             ).fetchone()

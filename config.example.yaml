@@ -1,7 +1,7 @@
 # =============================================================================
 # Paper Daily · 个人配置文件
 # =============================================================================
-# 改完保存后，在页面右上角「设置」里点击「重新加载配置」，不需要重启程序。
+# 修改后由管理员重新加载配置或重启服务，公开页面不提供设置入口。
 # 任何以 ${ENV_VAR} 形式写的值，都会从环境变量读取，避免把密钥写进文件。
 # =============================================================================
 
@@ -24,7 +24,7 @@ storage:
 # -----------------------------------------------------------------------------
 # 私有化 / 在线大模型。兼容 OpenAI Chat Completions 协议。
 #
-# DeepSeek：     base_url: https://api.deepseek.com/v1   model: deepseek-reasoner
+# DeepSeek：     base_url: https://api.deepseek.com/v1   model: deepseek-v4.1-flash-1017
 # 通义千问：     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 #               model: qwen3-max（或你的私有部署模型名）
 # vLLM / SGLang: base_url: http://127.0.0.1:8000/v1     model: 你的模型名
@@ -39,21 +39,21 @@ llm:
   enabled: true
   base_url: "https://api.deepseek.com/v1"
   api_key: ""
-  model: "deepseek-reasoner"
+  model: "deepseek-v4.1-flash-1017"
 
   # 本地 Ollama / vLLM 没有鉴权时设为 true。
   allow_no_api_key: false
 
   temperature: 0.25
-  # 深度科普版输出更长；建议 8000，较小上下文模型可降到 4000-6000。
-  max_tokens: 8000
+  # 单篇最大输出5000；短总览单独限制900。DeepSeek Flash默认关闭额外思考。
+  max_tokens: 5000
   timeout_seconds: 240
   # 同时调用模型的论文数。私有服务可调高，公有 API 建议 2~4。
-  concurrency: 3
+  concurrency: 2
   max_retries: 1
 
   # 深度思考强度。OpenAI 兼容服务支持时可填 "low" / "medium" / "high"。
-  # 留空则不发送该参数（DeepSeek Reasoner 自带思考，保持空即可）。
+  # 此阅读任务不需要额外思考预算，保持空；Flash请求会显式关闭thinking。
   reasoning_effort: ""
   # 是否发送 response_format=json_object。auto 会先尝试，不支持时自动降级。
   # 可选：auto / always / never
@@ -92,13 +92,13 @@ fetch:
 # -----------------------------------------------------------------------------
 digest:
   enabled: true
-  # 送给模型做导读的论文数量上限（按公共社区热度、ID取前N篇）。
+  # 旧字段保留兼容；新版短总览和逐篇条目覆盖全部当日论文。
   top_n: 18
 
 # -----------------------------------------------------------------------------
 # 自动更新（云端常驻时开启）
 # 每 15 分钟检查一次 HF Daily 是否有新文章；有新文章时只分析新增论文。
-# 今日导读每天只在 digest_time 生成一次，之后不再随新文章重写。
+# 每轮同步后按内容指纹更新短总览；digest_time仅兼容旧配置，已不参与生成时机。
 # -----------------------------------------------------------------------------
 schedule:
   enabled: true

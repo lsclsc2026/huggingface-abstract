@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import hashlib
+import time
+from contextvars import ContextVar
 import logging
 import re
 from datetime import datetime, timezone
@@ -21,6 +24,7 @@ from .prompts import (
 )
 
 LOGGER = logging.getLogger(__name__)
+_PURPOSE = ContextVar("model_purpose", default="connection")
 
 
 class LLMError(RuntimeError):
@@ -28,9 +32,10 @@ class LLMError(RuntimeError):
 
 
 class LLMClient:
-    def __init__(self, config: LLMConfig, profile: ProfileConfig) -> None:
+    def __init__(self, config: LLMConfig, profile: ProfileConfig, store=None) -> None:
         self.config = config
         self.profile = profile
+        self.store = store
         self._client: httpx.AsyncClient | None = None
         # 0 = all optional fields, 1 = no JSON/reasoning/temperature,
         # 2 = core payload only. Once a provider rejects optional fields, avoid
@@ -94,6 +99,8 @@ class LLMClient:
             payload["reasoning_effort"] = self.config.reasoning_effort
         if include_json and self.config.json_mode != "never":
             payload["response_format"] = {"type": "json_object"}
+        if 'deepseek' in self.config.model.lower() and any(part in self.config.model.lower() for part in ('flash','v4')):
+            payload['thinking'] = {'type': 'disabled'}
         if include_extra_body and self.config.extra_body:
             payload.update(self.config.extra_body)
         return payload
@@ -155,6 +162,7 @@ class LLMClient:
         last_error = ""
         for variant_index, payload in enumerate(variants):
             for attempt in range(self.config.max_retries + 1):
+                started = time.monotonic()
                 try:
                     response = await client.post(
                         self.config.chat_url,
@@ -162,6 +170,7 @@ class LLMClient:
                         json=payload,
                     )
                 except httpx.TimeoutException as exc:
+                    if self.store:self.store.record(self.config.model,_PURPOSE.get(),"timeout",time.monotonic()-started)
                     last_error = "模型请求超时"
                     if attempt < self.config.max_retries:
                         await asyncio.sleep(2 * (attempt + 1))
@@ -171,6 +180,7 @@ class LLMClient:
                         "可以在 config.yaml 增大 llm.timeout_seconds。"
                     ) from exc
                 except httpx.HTTPError as exc:
+                    if self.store:self.store.record(self.config.model,_PURPOSE.get(),"network_error",time.monotonic()-started)
                     last_error = f"网络错误：{type(exc).__name__}"
                     if attempt < self.config.max_retries:
                         await asyncio.sleep(2 * (attempt + 1))
@@ -179,6 +189,10 @@ class LLMClient:
                         "无法连接模型服务，请检查 llm.base_url、网络和代理。"
                     ) from exc
 
+                if self.store:
+                    try: usage = response.json().get('usage')
+                    except (ValueError,AttributeError): usage = None
+                    self.store.record(self.config.model,_PURPOSE.get(),response.status_code,time.monotonic()-started,usage)
                 if response.status_code == 200:
                     return self._extract_content(response)
 
@@ -247,39 +261,51 @@ class LLMClient:
             )
         return content
 
-    async def summarize_paper(self, paper: dict[str, Any]) -> dict[str, Any]:
-        prompt = build_paper_prompt(paper, self.profile)
-        system = PAPER_SYSTEM_PROMPT
-        if self.config.system_prompt_extra:
-            system += "\n\n额外要求：\n" + self.config.system_prompt_extra
-        content = await self._chat(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=self.config.max_tokens,
-            json_mode=True,
-        )
-        raw = extract_json_object(content)
-        return normalize_analysis(raw, paper, self.profile)
+    async def _result(self, purpose, messages, max_tokens, normalize):
+        material={'endpoint':self.config.chat_url,'model':self.config.model,'messages':messages,
+                  'credentials_hash':hashlib.sha256(json.dumps(self._headers(),sort_keys=True).encode()).hexdigest(),
+                  'max_tokens':max_tokens,'temperature':self.config.temperature,
+                  'reasoning':self.config.reasoning_effort,'extra':self.config.extra_body,
+                  'json_mode':self.config.json_mode,'protocol':'reading-v6'}
+        key=hashlib.sha256(json.dumps(material,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+        async def generate():
+            marker=_PURPOSE.set(purpose)
+            try:
+                raw=extract_json_object(await self._chat(messages,max_tokens=max_tokens,json_mode=True))
+                if not raw.get('overview' if purpose=='digest' else 'summary'):
+                    raise LLMError('模型缺少必需的正文，未缓存，请检查上游输出。')
+                return normalize(raw)
+            finally:_PURPOSE.reset(marker)
+        if self.store is None:return await generate()
+        async with self.store.lock(key):
+            cached=self.store.get('model-result-v6',key)
+            if cached is not None:return cached
+            result=await generate()
+            self.store.put('model-result-v6',key,result)
+            return result
 
-    async def generate_digest(
-        self, day: str, papers: list[dict[str, Any]]
-    ) -> dict[str, Any]:
-        if not papers:
-            return heuristic_digest(day, papers, self.profile)
-        prompt = build_digest_prompt(day, papers, self.profile)
-        system = DIGEST_SYSTEM_PROMPT
-        content = await self._chat(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=min(7000, self.config.max_tokens),
-            json_mode=True,
-        )
-        raw = extract_json_object(content)
-        return normalize_digest(raw, day, papers)
+    async def summarize_paper(self, paper: dict[str, Any]) -> dict[str, Any]:
+        system=PAPER_SYSTEM_PROMPT
+        if self.config.system_prompt_extra:system+='\n'+self.config.system_prompt_extra
+        result=await self._result('paper',[{'role':'system','content':system},
+                    {'role':'user','content':build_paper_prompt(paper,self.profile)}],
+                    min(5000,self.config.max_tokens),lambda raw:normalize_analysis(raw,paper,self.profile))
+        # Publication and evidence are parsed source metadata, never model inventions.
+        source=paper.get('source_material') or {}
+        result=dict(result)
+        result['publication']=source.get('publication',{'statement':'未核实发表或投稿状态','kind':'unverified','ranking':'未核实','source':'unverified'})
+        result['evidence_level']=source.get('evidence_level','abstract')
+        return result
+
+    async def generate_digest(self, day: str, papers: list[dict[str, Any]]) -> dict[str, Any]:
+        if not papers:return heuristic_digest(day,papers,self.profile)
+        return await self._result('digest',[{'role':'system','content':DIGEST_SYSTEM_PROMPT},
+                 {'role':'user','content':build_digest_prompt(day,papers,self.profile)}],
+                 min(900,self.config.max_tokens),lambda raw:{
+                     'headline':_clip(_text(raw.get('headline'),80),40),
+                     'overview':_clip(_text(raw.get('overview'),600),240),
+                     'source':'llm','prompt_version':'briefing-v6',
+                     'generated_at':datetime.now(timezone.utc).isoformat(timespec='seconds')})
 
     async def test_connection(self) -> str:
         content = await self._chat(
@@ -506,7 +532,7 @@ def normalize_analysis(
         "misconceptions": _as_misconceptions(raw.get("misconceptions")),
         "jargon": _as_jargon(raw.get("jargon")),
         "key_points": key_points,
-        "method": _clip(_text(raw.get("method"), 500), 160),
+        "method": _text(raw.get("method"), 2000),
         "findings": _clip(_text(raw.get("findings"), 500), 220),
         "why_it_matters": _clip(_text(raw.get("why_it_matters"), 500), 220),
         "limitations": _clip(_text(raw.get("limitations"), 500), 200),
@@ -517,7 +543,8 @@ def normalize_analysis(
         "paper_type": paper_type,
         "code_available": bool(paper.get("github_url")),
         "source": "llm",
-        "prompt_version": "beginner-shared-v5",
+        "prompt_version": "reading-v6",
+        "category": _clip(_text(raw.get("category"), 40), 40),
     }
 
 

@@ -179,7 +179,7 @@ async def test_llm_retries_without_json_mode():
         await client.close()
     assert analysis["source"] == "llm"
     assert "relevance_score" not in analysis
-    assert analysis["prompt_version"] == "beginner-shared-v5"
+    assert analysis["prompt_version"] == "reading-v6"
     assert analysis["analogy"].startswith("可以把它想成")
     assert analysis["jargon"][0]["term"] == "强化学习"
     assert analysis["contrast"].startswith("旧做法")
@@ -232,19 +232,9 @@ def test_normalize_beginner_fields_tolerates_loose_shapes():
 
 
 def test_beginner_prompt_keeps_core_contract():
-    for phrase in [
-        "不是把英文摘要翻译",
-        "一个主类比",
-        "概念先行",
-        "对照式解释",
-        "绝不能编造",
-        "1500-2200",
-        "how_it_works",
-        "jargon",
-        "misconceptions",
-        "contrast",
-    ]:
+    for phrase in ["设计", "方法正文", "绝不能编造", "summary", "jargon", "method", "key_points"]:
         assert phrase in PAPER_SYSTEM_PROMPT
+    assert 'misconceptions' not in PAPER_SYSTEM_PROMPT
 
 
 def test_normalize_digest_v3_rich_fields():
@@ -334,7 +324,7 @@ async def test_actual_model_requests_are_identical_for_different_profiles():
     bodies = []
     def handler(request):
         bodies.append(json.loads(request.content))
-        return httpx.Response(200, json={'choices':[{'message':{'content':'{"summary":"Shared"}'}}]})
+        return httpx.Response(200, json={'choices':[{'message':{'content':'{"summary":"Shared","overview":"Shared overview"}'}}]})
     for profile in [PROFILE, ProfileConfig(interests=['医学'], notes='用英语写', output_language='English')]:
         client = LLMClient(LLMConfig(api_key='test', model='mock'), profile)
         client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))

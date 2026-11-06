@@ -9,7 +9,7 @@ PAPER_FIELDS = ('id','daily_date','title','abstract','ai_summary','keywords','au
 ANALYSIS_FIELDS = ('title_zh','tldr','problem','summary','analogy','how_it_works','contrast',
     'example','misconceptions','jargon','key_points','method','findings','why_it_matters',
     'limitations','takeaway','tags','difficulty','read_minutes','paper_type',
-    'code_available','source','prompt_version')
+    'code_available','source','prompt_version','category','publication','evidence_level')
 
 
 def public_paper(paper: dict[str,Any]) -> dict[str,Any]:

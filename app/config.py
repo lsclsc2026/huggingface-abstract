@@ -120,7 +120,7 @@ class LLMConfig:
     enabled: bool = True
     base_url: str = "https://api.deepseek.com/v1"
     api_key: str = ""
-    model: str = "deepseek-reasoner"
+    model: str = "deepseek-v4.1-flash-1017"
     allow_no_api_key: bool = False
     temperature: float = 0.25
     max_tokens: int = 8000
@@ -338,7 +338,7 @@ def load_settings(path: Path | None = None) -> Settings:
         enabled=_boolean(llm_raw.get("enabled"), True),
         base_url=_text(llm_raw.get("base_url"), "https://api.deepseek.com/v1"),
         api_key=api_key,
-        model=_text(llm_raw.get("model"), "deepseek-reasoner"),
+        model=_text(llm_raw.get("model"), "deepseek-v4.1-flash-1017"),
         allow_no_api_key=_boolean(llm_raw.get("allow_no_api_key"), False),
         temperature=max(0.0, min(2.0, _number(llm_raw.get("temperature"), 0.25))),
         max_tokens=_integer(llm_raw.get("max_tokens"), 8000, minimum=256),

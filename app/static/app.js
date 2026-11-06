@@ -311,6 +311,9 @@
       const value = event.target.value;
       if (value) goToDate(value);
     });
+    try { document.body.classList.toggle("sidebar-collapsed", localStorage.getItem("paper-daily-sidebar-collapsed") === "true"); } catch {}
+    updateSidebarControl();
+    window.addEventListener("resize", () => { if (!window.matchMedia("(max-width: 940px)").matches) closeSidebar(); else updateSidebarControl(); });
     $("#mobile-menu-btn")?.addEventListener("click", toggleSidebar);
     $("#sidebar-backdrop")?.addEventListener("click", closeSidebar);
 
@@ -507,6 +510,7 @@
     if (!state.data) return;
     if (!state.data.papers || state.data.papers.length === 0) {
       $("#content").innerHTML = renderEmpty();
+      scheduleDigestPoll();
       return;
     }
     const papers = state.data.papers;
@@ -572,23 +576,9 @@
   }
 
   function renderDigestWaiting(payload, papers) {
-    const status = payload.digest_status || "collecting";
-    const due = status === "pending";
-    const digestTime = payload.digest_time || state.settings?.schedule?.digest_time || "16:00";
-    const title = due ? "今日导读正在生成" : "正在收集今天的文章";
-    const copy = due
-      ? `今天已收集 ${papers.length} 篇论文。到达 ${digestTime} 后会生成一次今日导读；后台完成后这里会自动更新。`
-      : `Hugging Face 会在一天里陆续上架论文。后台每 15 分钟检查一次，今天先持续收集，${digestTime} 再生成一次导读。`;
-    return `<section class="digest-waiting">
-      <div class="digest-waiting-icon">${icon("spark")}</div>
-      <div class="digest-waiting-copy">
-        <span class="digest-label"> TODAY'S BRIEFING</span>
-        <h2>${title}</h2>
-        <p>${copy}</p>
-        <div class="digest-waiting-meta"><span>${papers.length} 篇已收集</span><span>导读时间 ${esc(digestTime)}</span></div>
-      </div>
-      <button class="ghost-btn" data-action="reload-day">${icon("refresh")} 刷新状态</button>
-    </section>`;
+    const paused = state.settings?.schedule?.enabled === false;
+    return `<section class="digest-waiting"><div class="digest-waiting-copy"><span class="digest-label">今日导读</span>
+      <h2>${paused ? "自动提取已暂停" : "正在等待论文更新"}</h2><p>${paused ? "已有内容仍可阅读，自动提取恢复后再更新。" : "每轮同步完成后更新短总览与逐篇要点，无需等待固定时间。"}</p></div></section>`;
   }
 
   function scheduleDigestPoll() {
@@ -602,100 +592,16 @@
   }
 
   function renderDigest(digest, papers) {
-    const byId = new Map(papers.map((paper) => [paper.id, paper]));
-    const primer = (digest.primer || []).filter((item) => item && item.term && item.plain).slice(0, 5);
-    const threads = (digest.threads || []).filter((item) => item && item.name).slice(0, 4);
-    const themes = (digest.themes || []).slice(0, 3);
-    const path = (digest.reading_path || []).filter((item) => item && byId.has(item.id)).slice(0, 5);
-    const picks = (digest.top_picks || [])
-      .map((pick) => ({ ...pick, paper: byId.get(pick.id) }))
-      .filter((pick) => pick.paper);
-    const pathItems = path.length
-      ? path.map((item) => ({ ...item, paper: byId.get(item.id) }))
-      : picks.map((pick) => ({
-          id: pick.paper.id,
-          why: pick.reason || analysisOf(pick.paper).tldr || "",
-          before: "",
-          paper: pick.paper,
-        }));
-    const paperRef = (id) => {
-      const paper = byId.get(id);
-      if (!paper) return "";
-      const title = analysisOf(paper).title_zh || paper.title;
-      const short = title.length > 30 ? `${title.slice(0, 30)}…` : title;
-      return `<button class="paper-ref" data-action="open-paper" data-id="${esc(paper.id)}" title="${esc(title)}">${esc(short)}</button>`;
-    };
-    return `<section class="digest-card${primer.length || threads.length ? " is-deep" : ""}">
-      <div class="digest-head">
-        <span class="digest-label">${icon("spark")} 今日导读</span>
-        <span class="digest-source${digest.source === "llm" ? " is-ai" : ""}">${digest.source === "llm" ? "AI 主编" : "规则导读"}</span>
-      </div>
-      <h2 class="digest-title">${esc(digest.headline || "今天的论文速览")}</h2>
+    const byId = new Map(papers.map(paper => [paper.id, paper]));
+    const groups = digest.groups || [];
+    const paused = state.settings?.schedule?.enabled === false;
+    const status = digest.overview_status;
+    return `<section class="digest-card is-compact">
+      <div class="digest-head"><span class="digest-label">${icon("spark")} 今日导读</span><span class="digest-source">${paused ? "自动提取已暂停" : "随论文更新"} · ${papers.length} 篇</span></div>
       <p class="digest-overview">${esc(digest.overview || "")}</p>
-      ${
-        primer.length
-          ? `<div class="primer-section">
-              <span class="digest-block-label">PRIMER / 先补这几个概念</span>
-              <div class="primer-grid">
-                ${primer
-                  .map(
-                    (item) => `<article class="primer-card">
-                      <strong>${esc(item.term)}</strong>
-                      <p>${esc(item.plain)}</p>
-                      ${item.why ? `<span class="primer-why">${esc(item.why)}</span>` : ""}
-                      ${item.example ? `<em>${esc(item.example)}</em>` : ""}
-                      ${(item.paper_ids || []).length ? `<div class="primer-links">${item.paper_ids.map(paperRef).join("")}</div>` : ""}
-                    </article>`,
-                  )
-                  .join("")}
-              </div>
-            </div>`
-          : ""
-      }
-      <div class="digest-lower">
-        <div class="thread-column">
-          <span class="digest-block-label">${threads.length ? "THREADS / 今天到底在解决什么" : "THEMES / 主题脉络"}</span>
-          ${
-            threads.length
-              ? `<div class="thread-list">${threads
-                  .map(
-                    (thread, index) => `<article class="thread-item">
-                      <div class="thread-head"><span class="thread-index">0${index + 1}</span><h3>${esc(thread.name)}</h3></div>
-                      ${thread.problem ? `<p class="thread-row"><b>原来卡在</b>${esc(thread.problem)}</p>` : ""}
-                      ${thread.approach ? `<p class="thread-row"><b>今天怎么做</b>${esc(thread.approach)}</p>` : ""}
-                      ${thread.evidence ? `<p class="thread-row is-evidence"><b>证据</b>${esc(thread.evidence)}</p>` : ""}
-                      ${thread.boundary || thread.caveat ? `<p class="thread-row is-caveat"><b>适用边界</b>${esc(thread.boundary || thread.caveat)}</p>` : ""}
-                      ${(thread.paper_ids || []).length ? `<div class="thread-papers">${thread.paper_ids.map(paperRef).join("")}</div>` : ""}
-                    </article>`,
-                  )
-                  .join("")}</div>`
-              : `<div class="theme-list">${themes
-                  .map(
-                    (theme, index) => `<div class="theme-item">
-                      <span class="theme-index">0${index + 1}</span>
-                      <div><strong>${esc(theme.name)}</strong><p>${esc(theme.summary || "")}</p></div>
-                    </div>`,
-                  )
-                  .join("") || '<p class="theme-item">暂无主题归纳。</p>'}</div>`
-          }
-        </div>
-        <div class="reading-column">
-          <span class="digest-block-label">READING PATH / 建议从这里开始</span>
-          <div class="pick-list">
-            ${pathItems
-              .map((item, index) => {
-                const analysis = analysisOf(item.paper);
-                return `<button class="pick-item" data-action="open-paper" data-id="${esc(item.paper.id)}">
-                  <span class="pick-number">${pad2(index + 1)}</span>
-                  <span class="pick-copy"><strong>${esc(analysis.title_zh || item.paper.title)}</strong><span>${esc(item.why || analysis.tldr || "")}</span>${item.before ? `<em class="pick-before">先理解：${esc(item.before)}</em>` : ""}</span>
-                  ${icon("arrow")}
-                </button>`;
-              })
-              .join("") || '<p class="theme-item">打开论文列表开始阅读。</p>'}
-          </div>
-        </div>
-      </div>
-      ${digest.skip_hint ? `<p class="digest-skip"><strong>时间有限</strong> · ${esc(digest.skip_hint)}</p>` : ""}
+      ${status === "stale" ? '<p class="briefing-status">逐篇条目已更新；以下总览沿用上一版，等待后台更新。</p>' : status === "unavailable" ? '<p class="briefing-status">短总览暂不可用，以下逐篇要点可正常阅读。</p>' : ""}
+      <div class="briefing-groups">${groups.map(group => `<section class="briefing-group"><h3>${esc(group.name)} <small>${Number(group.count) || 0} 篇</small></h3>
+        <ul>${(group.entries || []).filter(entry => byId.has(entry.id)).map(entry => `<li><span>${esc(entry.text)}</span> <button class="paper-ref" data-action="open-paper" data-id="${esc(entry.id)}" title="${esc(entry.title)}">${esc(entry.title)} ${icon("arrow")}</button></li>`).join("")}</ul></section>`).join("")}</div>
     </section>`;
   }
 
@@ -704,7 +610,7 @@
     return `<section class="empty-state">
       <div class="empty-kicker">DAILY PAPERS</div>
       <h1 class="empty-title">${active ? "正在整理论文" : "这一天暂无论文"}</h1>
-      <p class="empty-copy">${active ? "后台正在更新，完成后页面会自动刷新。" : "可以查看往期；今日内容由后台定时更新。"}</p>
+      <p class="empty-copy">${state.settings?.schedule?.enabled === false ? "自动提取已暂停；已有内容可从往期阅读。" : active ? "后台正在更新，完成后页面会自动刷新。" : "可以查看往期；今日内容由后台定时更新。"}</p>
       <button class="ghost-btn" data-action="reload-day">${icon("refresh")} 刷新页面状态</button>
     </section>`;
   }
@@ -847,6 +753,10 @@
     requestAnimationFrame(() => $("#detail-root .detail-close")?.focus());
   }
 
+  function paragraphs(text) {
+    return String(text || "").split(/\n+/).filter(part => part.trim()).map(part => `<p>${esc(part)}</p>`).join("");
+  }
+
   function renderDetail(paper) {
     const root = $("#detail-root");
     if (!root) return;
@@ -891,82 +801,17 @@
               ${showOriginal ? `<p class="detail-original">${esc(paper.title)}</p>` : ""}
               <p class="detail-tldr">${esc(analysis.tldr || paper.ai_summary || "暂无摘要。")}</p>
 
-              ${(() => {
-                const media = mediaOf(paper);
-                if (!media.image && !media.video) return "";
-                return `<div class="detail-media">${media.video ? `<video controls preload="metadata" ${media.image ? `poster="${esc(media.image)}"` : ""} src="${esc(media.video)}"></video>` : `<img src="${esc(media.image)}" alt="${esc(title)}" loading="lazy" referrerpolicy="no-referrer">`}</div>`;
-              })()}
-
-              ${failed ? `<div class="model-warning">${icon("spark")}<span>这篇论文的模型总结失败，以下为规则摘要。${paper.analysis_error ? ` ${esc(paper.analysis_error)}` : ""}</span></div>` : ""}
-
-              ${
-                analysis.jargon?.length
-                  ? `<section class="jargon-section"><span class="beginner-label">读之前，先认识这几个词</span><div class="jargon-list">${analysis.jargon
-                      .map(
-                        (item) =>
-                          `<div class="jargon-item"><strong>${esc(item.term || "")}</strong><span>${esc(item.plain || "")}</span>${item.why ? `<small>${esc(item.why)}</small>` : ""}${item.example ? `<em>例如：${esc(item.example)}</em>` : ""}</div>`,
-                      )
-                      .join("")}</div></section>`
-                  : ""
-              }
-              ${analysis.problem ? `<section class="plain-box"><span class="beginner-label">先讲人话</span><p>${esc(analysis.problem)}</p></section>` : ""}
-              <section class="detail-section"><h3>PLAIN SUMMARY / 这篇论文做了什么</h3><p>${esc(analysis.summary || "暂无摘要。")}</p></section>
-              ${
-                analysis.analogy
-                  ? `<section class="analogy-box"><span class="beginner-label">一个生活化的类比</span><p>${esc(analysis.analogy)}</p></section>`
-                  : ""
-              }
-              ${
-                analysis.how_it_works?.length
-                  ? `<section class="detail-section"><h3>HOW IT WORKS / 它是怎么工作的</h3><ol class="steps-list">${analysis.how_it_works.map((step) => `<li>${esc(step)}</li>`).join("")}</ol></section>`
-                  : ""
-              }
-              ${
-                analysis.contrast
-                  ? `<section class="contrast-box"><span class="beginner-label">和原来的做法比，改了什么</span><p>${esc(analysis.contrast)}</p></section>`
-                  : ""
-              }
-              ${
-                analysis.example
-                  ? `<section class="example-box"><span class="beginner-label">举个例子</span><p>${esc(analysis.example)}</p></section>`
-                  : ""
-              }
-              ${
-                analysis.misconceptions?.length
-                  ? `<section class="misconceptions-box"><span class="beginner-label">容易理解错的地方</span><div class="misconceptions-list">${analysis.misconceptions
-                      .map(
-                        (item) =>
-                          `<div class="misconception-item"><p class="misconception-wrong">${esc(item.misunderstanding || "")}</p><p class="misconception-right">${esc(item.clarify || "")}</p></div>`,
-                      )
-                      .join("")}</div></section>`
-                  : ""
-              }
-              ${
-                analysis.key_points?.length
-                  ? `<section class="detail-section"><h3>KEY POINTS / 关键要点</h3><ul class="detail-points">${analysis.key_points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul></section>`
-                  : ""
-              }
-              ${
-                analysis.takeaway
-                  ? `<section class="takeaway-box"><span class="beginner-label">读完记住这一点</span><p>${esc(analysis.takeaway)}</p></section>`
-                  : ""
-              }
-              ${
-                analysis.why_it_matters
-                  ? `<section class="why-box detail-section"><h3>WHY IT MATTERS / 与你何关</h3><p>${esc(analysis.why_it_matters)}</p></section>`
-                  : ""
-              }
-              ${analysis.limitations ? `<section class="detail-section"><h3>CAVEATS / 局限</h3><p>${esc(analysis.limitations)}</p></section>` : ""}
-              ${
-                analysis.method || analysis.findings
-                  ? `<details class="tech-box"><summary>给进阶读者 · 方法与结果</summary><div class="tech-body">${analysis.method ? `<h3>METHOD / 方法</h3><p>${esc(analysis.method)}</p>` : ""}${analysis.findings ? `<h3>FINDINGS / 发现</h3><p>${esc(analysis.findings)}</p>` : ""}</div></details>`
-                  : ""
-              }
-              <details class="abstract-box">
-                <summary>原始摘要 · ORIGINAL ABSTRACT</summary>
-                <p>${esc(paper.abstract || "暂无原始摘要。")}</p>
-              </details>
-
+              <section class="detail-section original-abstract"><h3>英文摘要原文</h3><p lang="en">${esc(paper.abstract || "暂无原始摘要。")}</p></section>
+              ${failed ? '<p class="model-warning">模型分析未完成，当前展示已保存的规则摘要。</p>' : ""}
+              <section class="detail-section article-summary"><h3>摘要</h3>${paragraphs(analysis.summary || "暂无中文摘要。")}</section>
+              ${analysis.jargon?.length ? `<section class="jargon-section article-terms" aria-label="术语解释"><div class="jargon-list">${analysis.jargon.map(item => `<div class="jargon-item"><strong>${esc(item.term || "")}</strong><span>${esc(item.plain || "")}</span></div>`).join("")}</div></section>` : ""}
+              <section class="detail-section article-method"><h3>方法</h3>
+                <p class="evidence-note">${analysis.evidence_level === "method" ? "依据论文方法正文与摘要整理。" : "现有资料以摘要为主，未核实的方法细节不作补充。"}</p>
+                ${String(analysis.prompt_version || "").startsWith("reading-") ? paragraphs(analysis.method || "提供的材料未说明具体方法。") : `${analysis.how_it_works?.length ? `<ol class="steps-list">${analysis.how_it_works.map(step => `<li>${esc(step)}</li>`).join("")}</ol>` : paragraphs(analysis.method || "暂无方法说明。")}${analysis.contrast ? paragraphs(analysis.contrast) : ""}`}
+              </section>
+              ${analysis.key_points?.length ? `<section class="detail-section article-contributions"><h3>主要贡献</h3><ul class="detail-points">${analysis.key_points.map(point => `<li>${esc(point)}</li>`).join("")}</ul></section>` : ""}
+              ${(() => { const media = mediaOf(paper); if (!media.image && !media.video) return "";
+                return `<details class="paper-media"><summary>论文配图与演示</summary><div class="detail-media">${media.video ? `<video controls preload="none" ${media.image ? `poster="${esc(media.image)}"` : ""} src="${esc(media.video)}"></video>` : `<img src="${esc(media.image)}" alt="论文配图" loading="lazy" referrerpolicy="no-referrer">`}</div></details>`; })()}
 
               <div class="detail-nav">
                 <button data-action="detail-prev"${prev ? "" : " disabled"}>${icon("left")}<span>${prev ? esc(analysisOf(prev).title_zh || prev.title) : "上一篇"}</span></button>
@@ -978,6 +823,8 @@
               <dl class="detail-meta">
                 <div><dt>Authors</dt><dd>${esc((paper.authors || []).join(", ") || "未知")}</dd></div>
                 <div><dt>Affiliation</dt><dd>${esc(paper.organization || "未标注")}</dd></div>
+                <div><dt>发表状态</dt><dd>${esc(analysis.publication?.statement || "未核实发表或投稿状态")}</dd></div>
+                <div><dt>期刊分区</dt><dd>${esc(analysis.publication?.ranking || "未核实")}</dd></div>
                 <div><dt>Published</dt><dd>${esc(String(paper.published_at || "").slice(0, 10) || "未知")}</dd></div>
                 <div><dt>Reading</dt><dd>约 ${Number(analysis.read_minutes || 12)} 分钟 · ${esc(analysis.paper_type || "论文")}</dd></div>
                 <div><dt>Community</dt><dd>${paper.upvotes || 0} 赞</dd></div>
@@ -987,7 +834,7 @@
                 ${paper.pdf_url ? `<button class="side-link is-primary" data-action="download-pdf" data-id="${esc(paper.id)}"><span>${icon("download")} 下载 PDF</span>${icon("arrow")}</button>` : ""}
                 ${links.map((item) => `<a class="side-link" href="${esc(safeUrl(item.url))}" target="_blank" rel="noopener noreferrer"><span>${icon(item.icon)} ${esc(item.label)}</span>${icon("external")}</a>`).join("")}
               </div>
-              <p class="source-note">${fallback ? "本页为规则摘要；内容由后台统一更新。" : "由模型基于论文摘要统一生成。AI 可能出错，关键结论请回到原文核对。"}</p>
+              <p class="source-note">${fallback ? "本页为规则摘要；内容由后台统一更新。" : "由模型基于已取得的论文资料统一整理。AI 可能出错，关键结论请回原文核对。"}</p>
             </aside>
           </div>
         </div>
@@ -1056,18 +903,34 @@
      Extraction run
      ------------------------------------------------------------------------ */
 
-  function toggleSidebar() {
+  function updateSidebarControl() {
+    const mobile = window.matchMedia("(max-width: 940px)").matches;
+    const collapsed = document.body.classList.contains("sidebar-collapsed");
+    const open = mobile ? $("#sidebar")?.classList.contains("is-open") : !collapsed;
     const sidebar = $("#sidebar");
-    const backdrop = $("#sidebar-backdrop");
-    const open = !sidebar?.classList.contains("is-open");
-    sidebar?.classList.toggle("is-open", open);
-    if (backdrop) backdrop.hidden = !open;
+    if (sidebar) sidebar.inert = !open;
+    const button = $("#mobile-menu-btn");
+    button?.setAttribute("aria-expanded", String(Boolean(open)));
+    button?.setAttribute("aria-label", open ? "收起侧边栏" : "展开侧边栏");
+    if (button) button.title = open ? "收起侧边栏" : "展开侧边栏";
+  }
+
+  function toggleSidebar() {
+    if (window.matchMedia("(max-width: 940px)").matches) {
+      const open = !$("#sidebar")?.classList.contains("is-open");
+      $("#sidebar")?.classList.toggle("is-open", open);
+      if ($("#sidebar-backdrop")) $("#sidebar-backdrop").hidden = !open;
+    } else {
+      const collapsed = document.body.classList.toggle("sidebar-collapsed");
+      try { localStorage.setItem("paper-daily-sidebar-collapsed", String(collapsed)); } catch {}
+    }
+    updateSidebarControl();
   }
 
   function closeSidebar() {
     $("#sidebar")?.classList.remove("is-open");
-    const backdrop = $("#sidebar-backdrop");
-    if (backdrop) backdrop.hidden = true;
+    if ($("#sidebar-backdrop")) $("#sidebar-backdrop").hidden = true;
+    updateSidebarControl();
   }
 
   function closeExportMenus() {

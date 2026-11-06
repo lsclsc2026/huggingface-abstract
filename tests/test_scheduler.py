@@ -47,70 +47,58 @@ async def tick(runtime):
 
 
 @pytest.mark.asyncio
-async def test_interval_is_per_check_and_updates_continue_after_digest(scheduled_runtime):
-    runtime, clock, papers = scheduled_runtime
+async def test_single_fetch_per_interval_live_digest_before16_and_new_content(scheduled_runtime,monkeypatch):
+    runtime,clock,papers=scheduled_runtime
+    calls=[]
+    async def fetch(self,day,enrich_details=None):
+        calls.append(day)
+        return [dict(p) for p in papers]
+    monkeypatch.setattr(HFClient,'fetch_daily',fetch)
     try:
         await tick(runtime)
-        assert len(runtime.db.get_papers_for_date('2026-11-05')) == 2
-        original = runtime.db.get_paper('a')['analysis']
-        assert runtime.db.digest_for_day('2026-11-05') is None
-        papers.append({'id': 'c', 'daily_date': '2026-11-05', 'title': 'C'})
-        clock['now'] += timedelta(minutes=14, seconds=59)
-        await tick(runtime)
-        assert runtime.db.get_paper('c') is None
-        clock['now'] += timedelta(seconds=1)
-        await tick(runtime)
-        assert runtime.db.get_paper('c')['analysis']
-        assert runtime.db.get_paper('a')['analysis'] == original
-        clock['now'] = clock['now'].replace(hour=16, minute=0)
-        await tick(runtime)
-        digest = runtime.db.digest_for_day('2026-11-05')
+        assert len(calls)==1
+        digest=runtime.db.digest_for_day('2026-11-05')
         assert digest is not None
-        assert digest['reading_order'] == ['b']  # top_n=1 applies to fallback too
-        papers.append({'id': 'd', 'daily_date': '2026-11-05', 'title': 'D'})
-        clock['now'] += timedelta(minutes=15)
-        await tick(runtime)
-        assert runtime.db.get_paper('d')['analysis']
-        assert runtime.db.digest_for_day('2026-11-05') == digest
-        assert runtime.db.get_paper('a')['analysis'] == original
-    finally:
-        await runtime.shutdown()
+        assert len(digest['entries'])==2  # top_n cannot hide the rest of the day
+        original=runtime.db.get_paper('a')['analysis']
+        clock['now']+=timedelta(minutes=14,seconds=59)
+        await tick(runtime);assert len(calls)==1
+        papers.append({'id':'c','daily_date':'2026-11-05','title':'C'})
+        clock['now']+=timedelta(seconds=1)
+        await tick(runtime);assert len(calls)==2
+        updated=runtime.db.digest_for_day('2026-11-05')
+        assert len(updated['entries'])==3
+        assert updated['content_fingerprint']!=digest['content_fingerprint']
+        assert runtime.db.get_paper('a')['analysis']==original
+        clock['now']+=timedelta(minutes=15)
+        await tick(runtime);assert len(calls)==3
+        assert runtime.db.digest_for_day('2026-11-05')==updated
+    finally:await runtime.shutdown()
 
 
 @pytest.mark.asyncio
-async def test_failed_digest_retries_next_interval_with_public_selection(scheduled_runtime, monkeypatch):
-    runtime, clock, papers = scheduled_runtime
-    runtime.settings.llm.enabled = True
-    runtime.settings.llm.api_key = 'test'
+async def test_failed_overview_keeps_entries_and_retries_next_interval(scheduled_runtime,monkeypatch):
+    runtime,clock,papers=scheduled_runtime
+    runtime.settings.llm.enabled=True;runtime.settings.llm.api_key='test'
     runtime.db.upsert_papers(papers)
-    for paper in papers:
-        runtime.db.update_paper_analysis(paper['id'], {'summary': 'Shared'}, 'ok', 'llm')
-    # Personal relevance favors A, public popularity favors B. top_n=1 must
-    # select B regardless of this user's interest and the database's sort order.
-    runtime.db.update_relevance('a', 100)
-    clock['now'] = clock['now'].replace(hour=16, minute=0)
-    attempts = []
-    async def chat(self, messages, **kwargs):
-        payload = messages[-1]['content']
-        assert '"id": "b"' in payload and '"id": "a"' not in payload
-        assert '只写智能体' not in payload
+    for paper in papers:runtime.db.update_paper_analysis(paper['id'],{'summary':'Shared','tldr':'Mechanism'},'ok','llm')
+    attempts=[]
+    async def chat(self,messages,**kwargs):
+        data=json.loads(messages[-1]['content'].split('\n',1)[1])
+        assert {p['id'] for p in data['papers']}=={'a','b'}
         attempts.append(clock['now'])
-        if len(attempts) == 1:
-            raise LLMError('temporary upstream error')
-        return json.dumps({'headline': 'Shared digest', 'overview': 'Overview'})
-    monkeypatch.setattr(LLMClient, '_chat', chat)
+        if len(attempts)==1:raise LLMError('temporary error')
+        return json.dumps({'headline':'Short','overview':'Recovered overview'})
+    monkeypatch.setattr(LLMClient,'_chat',chat)
     try:
         await tick(runtime)
-        assert runtime.db.digest_for_day('2026-11-05') is None
-        clock['now'] += timedelta(minutes=14, seconds=59)
-        await tick(runtime)
-        assert runtime.db.digest_for_day('2026-11-05') is None
-        clock['now'] += timedelta(seconds=1)
-        await tick(runtime)
-        assert runtime.db.digest_for_day('2026-11-05')['headline'] == 'Shared digest'
-        assert len(attempts) == 2
-    finally:
-        await runtime.shutdown()
+        first=runtime.db.digest_for_day('2026-11-05')
+        assert len(first['entries'])==2 and first['overview_status']=='unavailable'
+        clock['now']+=timedelta(minutes=14,seconds=59);await tick(runtime);assert len(attempts)==1
+        clock['now']+=timedelta(seconds=1);await tick(runtime)
+        assert runtime.db.digest_for_day('2026-11-05')['overview']=='Recovered overview'
+        clock['now']+=timedelta(minutes=15);await tick(runtime);assert len(attempts)==2
+    finally:await runtime.shutdown()
 
 
 @pytest.mark.asyncio
