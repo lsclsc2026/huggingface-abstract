@@ -41,3 +41,10 @@ def test_real_world_method_headings(heading):
 def test_page_count_or_code_comment_is_not_a_publication_claim():
     result=parse_sources('<table><tr><td>Comments:</td><td>22 pages, code available</td></tr></table>','')
     assert result['publication']['statement']=='未核实发表或投稿状态'
+
+
+def test_inline_decoder_identity_is_preserved_in_deployment_notes():
+    result=parse_sources('', '<section><h2>2 Methods</h2><p>Although deployment uses <math alttext="D_H"><mi>D</mi></math>, both decoders are frozen.</p><table class="ltx_equation"><tr><td>large equation</td></tr></table></section>')
+    assert 'D_H' in result['method_text']
+    assert 'D_H' in result['implementation_notes']
+    assert 'large equation' not in result['method_text']

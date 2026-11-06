@@ -119,3 +119,18 @@ def test_administrator_connection_test_is_metered(public_client,monkeypatch):
 def test_formula_heavy_method_is_not_accepted_as_plain_reading():
     from app.llm import normalize_analysis,LLMError
     with pytest.raises(LLMError):normalize_analysis({'summary':'OK','method':'L_pred=λL_rec'},paper(),ProfileConfig())
+
+
+@pytest.mark.asyncio
+async def test_plain_overview_response_needs_no_extra_model_call(tmp_path):
+    db=Database(tmp_path/'db.sqlite');db.init();calls=[]
+    def handle(request):
+        calls.append(1)
+        return httpx.Response(200,json={'choices':[{'message':{'content':'今天的论文关注机器人迁移和模型效率，以下仅为本日选文观察。'}}]})
+    client=LLMClient(LLMConfig(api_key='test'),ProfileConfig(),store=ModelStore(db))
+    client._client=httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    first=await client.generate_digest('2026-11-05',[paper()])
+    assert first['overview'].startswith('今天的论文')
+    assert await client.generate_digest('2026-11-05',[paper()])==first
+    assert len(calls)==1
+    await client.close()

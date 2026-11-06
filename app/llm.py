@@ -275,7 +275,14 @@ class LLMClient:
         async def generate():
             marker=_PURPOSE.set(purpose)
             try:
-                raw=extract_json_object(await self._chat(messages,max_tokens=max_tokens,json_mode=True))
+                content=await self._chat(messages,max_tokens=max_tokens,json_mode=True)
+                try:raw=extract_json_object(content)
+                except LLMError:
+                    # A plain Chinese overview is already the required product;
+                    # do not pay for a repair call solely to add JSON braces.
+                    if purpose=='digest' and 20<=len(content)<=800 and len(re.findall(r'[\u4e00-\u9fff]',content))>=10 and not any(mark in content for mark in ('{','}','```','<','>')):
+                        raw={'headline':'今日论文速览','overview':content.strip()}
+                    else:raise
                 if not raw.get('overview' if purpose=='digest' else 'summary'):
                     raise LLMError('模型缺少必需的正文，未缓存，请检查上游输出。')
                 return normalize(raw)

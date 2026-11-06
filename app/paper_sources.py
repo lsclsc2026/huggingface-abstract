@@ -21,8 +21,11 @@ def parse_sources(abstract_html: str,body_html: str) -> dict:
     if kind=='unverified' and re.search(r'\b(accepted|published|submitted|under review)\b',comments,re.I):kind='conference' if re.search(r'\b(conference|ICLR|ICML|NeurIPS|CVPR|CoRL|ICRA|IROS)\b',comments,re.I) else kind
     publication={'statement':statement[:600] or '未核实发表或投稿状态','kind':kind,'ranking':'不适用（非期刊）' if kind in {'conference','workshop'} else '未核实','source':'arxiv_author_metadata' if statement else 'unverified'}
     body=BeautifulSoup(body_html,'html.parser')
-    for element in body.select('script,style,nav,footer,.ltx_equation,.ltx_equationgroup,math,.ltx_Math'):
+    for element in body.select('script,style,nav,footer,.ltx_equation,.ltx_equationgroup'):
         if element.parent is not None:element.decompose()
+    for element in body.select('math,.ltx_Math'):
+        if element.parent is not None:element.replace_with(' '+(element.get('alttext') or element.get_text(' ',strip=True))+' ')
+    notes='\n'.join(p.get_text(' ',strip=True) for p in body.select('p') if re.search(r'(at deployment|deployment uses|although deployment|weighted task score)',p.get_text(' ',strip=True),re.I))[:1800]
     methods=[];results=[]
     for section in body.select('section'):
         heading=section.find(['h2','h3'],recursive=False)
@@ -34,7 +37,7 @@ def parse_sources(abstract_html: str,body_html: str) -> dict:
             if not any(parent in results for parent in section.parents):results.append(section)
     method='\n'.join(item.get_text(' ',strip=True) for item in methods)[:12000]
     evidence='\n'.join(item.get_text(' ',strip=True) for item in results)[:3500]
-    return {'publication':publication,'method_text':method,'results_text':evidence,'evidence_level':'method' if method else 'abstract'}
+    return {'publication':publication,'method_text':method,'results_text':evidence,'implementation_notes':notes,'evidence_level':'method' if method else 'abstract'}
 
 
 class PaperSources:
@@ -44,7 +47,7 @@ class PaperSources:
     async def get(self,paper_id: str) -> dict:
         if not ARXIV_ID.fullmatch(paper_id):return parse_sources('','')
         async with self.store.lock('source:'+paper_id):
-            cached=self.store.get('arxiv-reading-v2',paper_id)
+            cached=self.store.get('arxiv-reading-v3',paper_id)
             if cached is not None:return cached
             pages=[]
             async with httpx.AsyncClient(timeout=httpx.Timeout(15,connect=5),transport=self.transport,follow_redirects=False,trust_env=False) as client:
@@ -61,5 +64,5 @@ class PaperSources:
                     except (httpx.HTTPError,ValueError):pages.append('')
             result=parse_sources(*pages)
             result['source_url']=f'https://arxiv.org/abs/{paper_id}'
-            self.store.put('arxiv-reading-v2',paper_id,result,ttl=None if result['method_text'] else 86400)
+            self.store.put('arxiv-reading-v3',paper_id,result,ttl=None if result['method_text'] else 86400)
             return result
