@@ -596,20 +596,21 @@
     }, 60000);
   }
 
-  function briefingColors(papers) {
-    // Seeded pastel hues: reloads stay stable; sorted IDs avoid heat-sort flicker.
+  function briefingColors(entries) {
+    // Follow reading order so adjacent sentences always use distant pastel hues.
+    // The date seed keeps reloads stable without making every day identical.
     let seed = 2166136261;
     for (const char of state.date) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
-    return new Map([...papers].sort((a, b) => a.id.localeCompare(b.id)).map((paper, index) => {
+    return new Map(entries.map((paper, index) => {
       const hue = ((seed % 360) + index * 137.508) % 360;
-      return [paper.id, `hsl(${hue.toFixed(2)} 24% ${(79 + (index % 3) * 1.4).toFixed(1)}%)`];
+      return [paper.id, `hsl(${hue.toFixed(2)} 46% 76%)`];
     }));
   }
 
   function renderDigest(digest, papers) {
     const byId = new Map(papers.map(paper => [paper.id, paper]));
-    const colors = briefingColors(papers);
     const groups = digest.groups || [];
+    const colors = briefingColors(groups.flatMap(group => group.entries || []).filter(entry => byId.has(entry.id)));
     const paused = state.settings?.schedule?.enabled === false;
     const status = digest.overview_status;
     let reference = 0;
