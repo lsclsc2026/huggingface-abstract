@@ -42,7 +42,7 @@ async def test_success_cache_singleflight_survives_restart_and_tracks_usage(tmp_
     other=LLMClient(config,ProfileConfig(),store=ModelStore(db))
     third=await other.summarize_paper(paper());await other.close()
     assert first==second==third and len(calls)==1
-    assert first['prompt_version']=='reading-v7'
+    assert first['prompt_version']=='reading-v8'
     stats=store.usage()
     assert stats['requests']==1 and stats['prompt_tokens']==120 and stats['completion_tokens']==80
     assert calls[0]['thinking']=={'type':'disabled'}

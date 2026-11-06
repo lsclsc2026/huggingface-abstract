@@ -272,7 +272,7 @@ class LLMClient:
                   'credentials_hash':hashlib.sha256(json.dumps(self._headers(),sort_keys=True).encode()).hexdigest(),
                   'max_tokens':max_tokens,'temperature':self.config.temperature,
                   'reasoning':self.config.reasoning_effort,'extra':self.config.extra_body,
-                  'json_mode':self.config.json_mode,'protocol':'reading-v7' if purpose=='paper' else 'reading-v6'}
+                  'json_mode':self.config.json_mode,'protocol':'reading-v8' if purpose=='paper' else 'reading-v6'}
         key=hashlib.sha256(json.dumps(material,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
         async def generate():
             marker=_PURPOSE.set(purpose)
@@ -535,7 +535,7 @@ def normalize_analysis(
     how_it_works = [_clip(item, 180) for item in how_it_works]
     from .method_evidence import grounded_method
     method_result = grounded_method(raw, paper.get("source_material") or {})
-    return {
+    result = {
         **method_result,
         "title_zh": title,
         "tldr": tldr,
@@ -558,9 +558,11 @@ def normalize_analysis(
         "paper_type": paper_type,
         "code_available": bool(paper.get("github_url")),
         "source": "llm",
-        "prompt_version": "reading-v7",
+        "prompt_version": "reading-v8",
         "category": _clip(_text(raw.get("category"), 40), 40),
     }
+    from .terminology import normalize_terminology
+    return normalize_terminology(result)
 
 
 def _plain(text: str) -> str:

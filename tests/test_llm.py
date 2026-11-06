@@ -179,7 +179,7 @@ async def test_llm_retries_without_json_mode():
         await client.close()
     assert analysis["source"] == "llm"
     assert "relevance_score" not in analysis
-    assert analysis["prompt_version"] == "reading-v7"
+    assert analysis["prompt_version"] == "reading-v8"
     assert analysis["analogy"].startswith("可以把它想成")
     assert analysis["jargon"][0]["term"] == "强化学习"
     assert analysis["contrast"].startswith("旧做法")
@@ -227,7 +227,7 @@ def test_normalize_beginner_fields_tolerates_loose_shapes():
     analysis = normalize_analysis(raw, paper(), PROFILE)
     assert analysis["how_it_works"] == ["第一步", "第二步"]
     assert len(analysis["jargon"]) == 2
-    assert analysis["jargon"][0]["term"] == "token"
+    assert analysis["jargon"][0]["term"] == "token（词元）"
     assert analysis["takeaway"] == "记住这一点。"
 
 
