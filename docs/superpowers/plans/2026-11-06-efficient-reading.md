@@ -22,23 +22,27 @@
 
 ### Task1: Sources, prompt schema and model/cache use
 Files: app/paper_sources.py (new), app/model_store.py (new), app/prompts.py, app/llm.py, app/db.py, app/public.py; tests/test_efficient_reading.py (new), tests/test_sources.py (new), tests/test_llm.py.
-- [ ] Write source and new output/prompt/cache/usage failing tests; run red.
-- [ ] Implement bounded parsed sources, compact prompts, successful caching + single-flight + attempt ledger; normalize approved fields and preserve legacy compatibility.
-- [ ] Run relevant tests, commit.
+- [x] Write source and new output/prompt/cache/usage failing tests; run red.
+- [x] Implement bounded parsed sources, compact prompts, successful caching + single-flight + attempt ledger; normalize approved fields and preserve legacy compatibility.
+- [x] Run relevant tests, commit.
 
 ### Task2: Dynamic digest and single-fetch scheduler
 Files: app/briefing.py (new), app/service.py, app/main.py, app/db.py, app/exporting.py; tests/test_scheduler.py, tests/test_api.py.
-- [ ] Write tests for pre16 generation, new-content update, same-content reuse, one fetch/tick, fallback recovery and no-data behavior; observe red.
-- [ ] Implement stable content fingerprint and deterministic full-day groups; compact overview refresh, persistent cache, bounded retry. Update API/export/admin usage.
-- [ ] Run full tests; commit.
+- [x] Write tests for pre16 generation, new-content update, same-content reuse, one fetch/tick, fallback recovery and no-data behavior; observe red.
+- [x] Implement stable content fingerprint and deterministic full-day groups; compact overview refresh, persistent cache, bounded retry. Update API/export/admin usage.
+- [x] Run full tests; commit.
 
 ### Task3: Approved UI and collapse control
 Files: app/static/app.js, app/static/index.html, app/static/styles.css.
-- [ ] Implement short digest/full article rows with open-paper buttons; exact detail order and metadata/evidence states, legacy content support; desktop collapse/persist, mobile drawer.
-- [ ] JS check and real Chromium test long papers, malicious text, all links, mobile/sidebar and no-model GET behavior; commit.
+- [x] Implement short digest/full article rows with open-paper buttons; exact detail order and metadata/evidence states, legacy content support; desktop collapse/persist, mobile drawer.
+- [x] JS check and real Chromium test long papers, malicious text, all links, mobile/sidebar and no-model GET behavior; commit.
 
 ### Task4: Cloud delivery
 Files: config.example.yaml, app/__init__.py, README.md, HANDOFF.md, AGENTS.md, docs/verification-v1.8.0-2026-11-06.md.
-- [ ] Set actual local/cloud config exact discovered model name and disabled thinking, keep schedule disabled, backup secrets privately.
-- [ ] Independent read-only review; fix major issues; full tests and browser verification.
-- [ ] Cloud backup/no-active guard, deploy, compare old data and config intent, actual browser + source match, document URL/source/start/build and limitations; push tested Git release.
+- [x] Set actual local/cloud config exact discovered model name and disabled thinking, keep schedule disabled, backup secrets privately.
+- [x] Independent read-only review; fix major issues; full tests and browser verification.
+- [x] Cloud backup/no-active guard, deploy, compare old data and config intent, actual browser + source match, document URL/source/start/build and limitations; push tested Git release.
+
+## 交付结果
+
+云端v1.8.0于2026-11-06 10:47部署并验收，78测试、独立复审、真实网关有限样本及真实云端浏览器通过；自动提取保持暂停，32篇中只重做H2RB，旧数据保留。详细证据及实际token用量见 docs/verification-v1.8.0-2026-11-06.md。

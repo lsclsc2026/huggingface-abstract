@@ -28,7 +28,18 @@ H2RB样本原文核对后，去除了模型末句无依据的“两套分词器�
 
 ## 云端交付
 
-待最终部署后补齐真实健康、来源文件匹配、配置/数据保留检查、URL及备份位置。
+2026-11-06 10:47:09（北京时间）部署代码`b88a90a3f18baaaec2f3508c42f24440fc6d4b4c`，归档SHA256 `1c094c039e4af903990c28dea1f61b0bd3d4769e4dbfa11b62241addc5b594bf`。后续文档提交不改变运行源码。
+
+- 健康ok=true、version=1.8.0，模型精确名称已更新，schedule.enabled=false，无在途任务。
+- 部署前备份 `/root/autodl-tmp/backups/paper-daily-pre-v1.8.0-20261106-104605/`：源码和配置、32篇SQLite一致性快照、其他私有数据与内容哈希。备份权限受限，不上传Git。
+- 仅允许model/max_tokens/concurrency/reasoning_effort四项配置变动，其余结构逐项相等：网关、密钥、抓取配置、暂停状态等均保留。
+- 原有全部英文摘要、标题、私人笔记/待读/旧分数哈希相等；排除H2RB后的31篇原始分析哈希相等；已有导读行原样保留，新导读追加单独完成任务行。SQLite integrity_check=ok。
+- 线上21个app文件逐一与Git归档一致。公开日期API返回32篇、32个导读条目，各分组数量合计32，短总览ready，digest_mode=live。评论404，管理/usage未授权403。
+- 真实云端通过SSH隧道进入Chromium：选11.5、打开H2RB新详情，英文原文紧随重点句，方法/术语/贡献顺序正确；桌面收起及重载保持、手机drawer/Escape关闭通过，无横向溢出、JS异常或POST请求。
+- 在云端核验脚本中明确禁用_chat/HTTP生成，使用持久缓存成功读出H2RB分析和32篇短总览；用量账本仍为6次，无新增请求。
+- 已停止临时浏览器验证服务和隧道；生产screen paper-daily持续运行，127.0.0.1:8765。原有connect-cloud.sh方式不变。
+
+回滚先确认无在途任务并取得新备份，再停止screen，从上述source-and-config.tar.gz恢复源码与配置，保留当前数据库；v1.7兼容新增缓存表，但将显示其旧页面结构。若需恢复H2RB旧分析或旧导读，应单独选取备份记录，不能整库覆盖导致新数据丢失。回滚后仍保持schedule.enabled=false。
 
 ## 访问与代码
 
