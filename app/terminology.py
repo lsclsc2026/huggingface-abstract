@@ -130,11 +130,15 @@ def normalize_day(db, day, *, apply=False):
         if digest_row:
             previous = json.loads(digest_row['digest'])
             if previous.get('overview_status') == 'ready' and previous.get('content_fingerprint') == fingerprint(before_papers):
-                overview = {**previous, 'overview': prose(previous.get('overview', '')),
+                overview_text = prose(previous.get('overview', ''))
+                if len(overview_text) > 240:
+                    overview_text = previous.get('overview', '')
+                overview = {**previous, 'overview': overview_text,
                             'headline': prose(previous.get('headline', '')),
                             'content_fingerprint': fingerprint(after_papers),
                             'overview_fingerprint': fingerprint(after_papers)}
                 updated = {**previous, **compose(day, after_papers, overview)}
+                updated['overview'] = overview_text  # Never truncate stored legacy text.
                 if updated != previous:
                     report['digest_updated'] = True
                     if apply:

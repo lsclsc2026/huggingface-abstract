@@ -98,3 +98,19 @@ def test_day_update_keeps_equivalent_briefing_ready_without_model_calls(tmp_path
     assert after['content_fingerprint']==fingerprint(db.get_papers_for_date('2026-11-06'))
     assert compose('2026-11-06',db.get_papers_for_date('2026-11-06'),after)['overview_status']=='ready'
     assert normalize_day(db,'2026-11-06',apply=True)['updated']==0
+
+
+def test_vocabulary_update_never_truncates_a_full_length_overview(tmp_path):
+    from app.db import Database
+    from app.briefing import compose
+    from app.terminology import normalize_day
+    db=Database(tmp_path/'db.sqlite');db.init()
+    db.upsert_papers([{'id':'p','daily_date':'2026-11-06','title':'Research'}])
+    db.update_paper_analysis('p',{'summary':'词元研究','tldr':'词元生成。'},'ok','llm')
+    run=db.create_run('2026-11-06',True);db.update_run(run['id'],status='completed')
+    original='词元'+'甲'*234+'重要结论'
+    assert len(original)==240
+    digest=compose('2026-11-06',db.get_papers_for_date('2026-11-06'))
+    digest.update(overview=original,overview_status='ready',source='llm');db.set_digest(run['id'],digest)
+    normalize_day(db,'2026-11-06',apply=True)
+    assert db.digest_for_day('2026-11-06')['overview']==original
