@@ -592,17 +592,33 @@
     }, 60000);
   }
 
+  function briefingColors(papers) {
+    // Seeded pastel hues: reloads stay stable; sorted IDs avoid heat-sort flicker.
+    let seed = 2166136261;
+    for (const char of state.date) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+    return new Map([...papers].sort((a, b) => a.id.localeCompare(b.id)).map((paper, index) => {
+      const hue = ((seed % 360) + index * 137.508) % 360;
+      return [paper.id, `hsl(${hue.toFixed(2)} 24% ${(79 + (index % 3) * 1.4).toFixed(1)}%)`];
+    }));
+  }
+
   function renderDigest(digest, papers) {
     const byId = new Map(papers.map(paper => [paper.id, paper]));
+    const colors = briefingColors(papers);
     const groups = digest.groups || [];
     const paused = state.settings?.schedule?.enabled === false;
     const status = digest.overview_status;
+    let reference = 0;
     return `<section class="digest-card is-compact">
       <div class="digest-head"><span class="digest-label">${icon("spark")} 今日导读</span><span class="digest-source">${paused ? "自动提取已暂停" : "随论文更新"} · ${papers.length} 篇</span></div>
       <p class="digest-overview">${esc(digest.overview || "")}</p>
-      ${status === "stale" ? '<p class="briefing-status">逐篇条目已更新；以下总览沿用上一版，等待后台更新。</p>' : status === "unavailable" ? '<p class="briefing-status">短总览暂不可用，以下逐篇要点可正常阅读。</p>' : ""}
+      ${status === "stale" ? '<p class="briefing-status">逐篇条目已更新；总览沿用上一版，等待后台更新。</p>' : status === "unavailable" ? '<p class="briefing-status">短总览暂不可用，以下逐篇要点可正常阅读。</p>' : ""}
       <div class="briefing-groups">${groups.map(group => `<section class="briefing-group"><h3>${esc(group.name)} <small>${Number(group.count) || 0} 篇</small></h3>
-        <ul>${(group.entries || []).filter(entry => byId.has(entry.id)).map(entry => `<li><span>${esc(entry.text)}</span> <button class="paper-ref" data-action="open-paper" data-id="${esc(entry.id)}" title="${esc(entry.title)}">${esc(entry.title)} ${icon("arrow")}</button></li>`).join("")}</ul></section>`).join("")}</div>
+        <p class="briefing-paragraph">${(group.entries || []).filter(entry => byId.has(entry.id)).map(entry => {
+          const number = ++reference;
+          const text = String(entry.text || "").trim().replace(/[。；;.!！?？]+$/, "");
+          return `<span class="briefing-sentence" style="color:${colors.get(entry.id)}">${esc(text)}<button type="button" class="briefing-ref" data-action="open-paper" data-id="${esc(entry.id)}" title="查看论文：${esc(entry.title)}" aria-label="查看第${number}篇论文：${esc(entry.title)}">[${number}]</button>。</span>`;
+        }).join(" ")}</p></section>`).join("")}</div>
     </section>`;
   }
 
@@ -802,17 +818,18 @@
               ${showOriginal ? `<p class="detail-original">${esc(paper.title)}</p>` : ""}
               <p class="detail-tldr">${esc(analysis.tldr || paper.ai_summary || "暂无摘要。")}</p>
 
+              ${(() => { const media = mediaOf(paper); if (!media.image && !media.video) return "";
+                return `<div class="detail-media article-media">${media.video ? `<video controls playsinline preload="metadata" ${media.image ? `poster="${esc(media.image)}"` : ""} src="${esc(media.video)}"></video>` : `<img src="${esc(media.image)}" alt="${esc(title)} · 论文配图" loading="lazy" referrerpolicy="no-referrer">`}</div>`; })()}
               <section class="detail-section original-abstract"><h3>英文摘要原文</h3><p lang="en">${esc(paper.abstract || "暂无原始摘要。")}</p></section>
               ${failed ? '<p class="model-warning">模型分析未完成，当前展示已保存的规则摘要。</p>' : ""}
               <section class="detail-section article-summary"><h3>摘要</h3>${paragraphs(analysis.summary || "暂无中文摘要。")}</section>
-              ${analysis.jargon?.length ? `<section class="jargon-section article-terms" aria-label="术语解释"><div class="jargon-list">${analysis.jargon.map(item => `<div class="jargon-item"><strong>${esc(item.term || "")}</strong><span>${esc(item.plain || "")}</span></div>`).join("")}</div></section>` : ""}
+              ${analysis.jargon?.length ? `<section class="article-terms" aria-label="术语解释">${analysis.jargon.map(item => `<p class="article-term"><strong>${esc(item.term || "")}</strong><span>：${esc(item.plain || "")}</span></p>`).join("")}</section>` : ""}
               <section class="detail-section article-method"><h3>方法</h3>
                 <p class="evidence-note">${analysis.evidence_level === "method" ? "依据论文方法正文与摘要整理。" : "现有资料以摘要为主，未核实的方法细节不作补充。"}</p>
                 ${String(analysis.prompt_version || "").startsWith("reading-") ? paragraphs(analysis.method || "提供的材料未说明具体方法。") : `${analysis.how_it_works?.length ? `<ol class="steps-list">${analysis.how_it_works.map(step => `<li>${esc(step)}</li>`).join("")}</ol>` : paragraphs(analysis.method || "暂无方法说明。")}${analysis.contrast ? paragraphs(analysis.contrast) : ""}`}
               </section>
               ${analysis.key_points?.length ? `<section class="detail-section article-contributions"><h3>主要贡献</h3><ul class="detail-points">${analysis.key_points.map(point => `<li>${esc(point)}</li>`).join("")}</ul></section>` : ""}
-              ${(() => { const media = mediaOf(paper); if (!media.image && !media.video) return "";
-                return `<details class="paper-media"><summary>论文配图与演示</summary><div class="detail-media">${media.video ? `<video controls preload="none" ${media.image ? `poster="${esc(media.image)}"` : ""} src="${esc(media.video)}"></video>` : `<img src="${esc(media.image)}" alt="论文配图" loading="lazy" referrerpolicy="no-referrer">`}</div></details>`; })()}
+
 
               <div class="detail-nav">
                 <button data-action="detail-prev"${prev ? "" : " disabled"}>${icon("left")}<span>${prev ? esc(analysisOf(prev).title_zh || prev.title) : "上一篇"}</span></button>

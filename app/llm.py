@@ -432,7 +432,7 @@ def _as_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "是"}
 
 
-def _as_jargon(value: Any, limit: int = 5) -> list[dict[str, str]]:
+def _as_jargon(value: Any, limit: int = 16) -> list[dict[str, str]]:
     """Normalize the jargon glossary from forgiving model output shapes."""
     if isinstance(value, dict):
         items: list[Any] = [{"term": key, "plain": item} for key, item in value.items()]

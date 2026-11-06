@@ -134,3 +134,11 @@ async def test_plain_overview_response_needs_no_extra_model_call(tmp_path):
     assert await client.generate_digest('2026-11-05',[paper()])==first
     assert len(calls)==1
     await client.close()
+
+
+def test_glossary_keeps_as_many_needed_terms_without_a_four_or_five_term_cutoff():
+    from app.llm import normalize_analysis
+    terms=[{'term':f'Term {n}','plain':'必要的概念说明'} for n in range(8)]
+    result=normalize_analysis({'summary':'研究创新','method':'具体方法','jargon':terms},paper(),ProfileConfig())
+    assert len(result['jargon'])==8
+    assert len(normalize_analysis({'summary':'研究创新','jargon':terms[:1]},paper(),ProfileConfig())['jargon'])==1
