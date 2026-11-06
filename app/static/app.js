@@ -290,6 +290,10 @@
       state.meta = meta;
       state.today = meta.today;
       state.settings = meta.settings;
+      const note = $(".run-note");
+      if (note) note.textContent = state.settings?.schedule?.enabled === false
+        ? "自动提取已暂停。已有论文可继续阅读，恢复提取后导读随新内容更新。"
+        : `后台每${Number(state.settings?.schedule?.check_interval_minutes) || 15}分钟同步新文章，导读随内容更新。`;
       state.date = meta.today;
       updateDateChrome();
       const picker = $("#date-picker");
