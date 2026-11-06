@@ -22,6 +22,10 @@
 
 ## 部署
 
-部署前备份：`/root/autodl-tmp/backups/paper-daily-pre-v1.9.0-20261106-142057/`，源码、真实配置、SQLite一致性快照及其他数据。备份时42篇、生产model_calls 28条；等无在途任务后部署，保留15分钟自动调度和私有配置。实际部署结果在HANDOFF记录。
+部署前备份：`/root/autodl-tmp/backups/paper-daily-pre-v1.9.0-20261106-142215/`，源码、真实配置、SQLite一致性快照及其他数据。备份时44篇、生产model_calls 31条；等无在途任务后部署，保留15分钟自动调度和私有配置。实际部署结果在HANDOFF记录。
 
 源码目录`/home/lsc/work/huggingface-abstract`；关键入口`app/paper_sources.py`、`app/method_evidence.py`、`app/pdf_text.py`、`app/prompts.py`、`app/llm.py`。安装依赖`.venv/bin/python -m pip install -r requirements.txt`，启动`.venv/bin/python run.py --no-browser`；原生JS/CSS无需前端构建。体验仍需运行`./connect-cloud.sh`后访问<http://127.0.0.1:8765>，不是公网入口。
+
+实际部署2026-11-06 14:22，代码`43ff56639eabaed0a82e781d4b73eb62934d758c`，归档SHA256 `00b9ca6e165445c027cd2ead4b2e1c676905c6c295f02e67633d34fbb09ed295`。23个应用文件哈希匹配。备份与重启前后所有分析、摘要、私人字段、历史导读、用量账本和配置哈希一致。真实云端Chromium桌面/手机32篇回归通过，无JS错误、无POST；静态前端文件未修改。重启后调度自动运行并完成，当日12篇，无失败，已有分析复用。回滚代码`v1.8.2`，保持数据库与现行自动调度配置。
+
+额外真实PDF解析核验（无模型调用）：1706.03762官方PDF 2,215,244字节，本地受限子进程提取39,613字符，方法选择12片段、5,980字符，涵盖3.1–3.5结构小节，未超6000字符预算。该论文HTML路径本身也可用；此项直接验证PDF解析链路，与模拟HTTP回退测试共同覆盖备用路径。
