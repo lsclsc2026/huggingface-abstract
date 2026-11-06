@@ -19,6 +19,7 @@ def parse_sources(abstract_html: str,body_html: str) -> dict:
     statement=journal or (comments if re.search(r'\b(accepted|published|submitted|under review|workshop|conference|ICLR|ICML|NeurIPS|CVPR|CoRL|ICRA|IROS)\b',comments,re.I) else '')
     kind='journal' if journal else ('workshop' if 'workshop' in comments.lower() else 'unverified')
     if kind=='unverified' and re.search(r'\b(accepted|published|submitted|under review)\b',comments,re.I):kind='conference' if re.search(r'\b(conference|ICLR|ICML|NeurIPS|CVPR|CoRL|ICRA|IROS)\b',comments,re.I) else kind
+    statement=re.split(r'\b(?:Project page|Code|Website)\s*:',statement,flags=re.I)[0].strip()
     publication={'statement':statement[:600] or '未核实发表或投稿状态','kind':kind,'ranking':'不适用（非期刊）' if kind in {'conference','workshop'} else '未核实','source':'arxiv_author_metadata' if statement else 'unverified'}
     body=BeautifulSoup(body_html,'html.parser')
     for element in body.select('script,style,nav,footer,.ltx_equation,.ltx_equationgroup'):

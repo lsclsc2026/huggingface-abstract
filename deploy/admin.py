@@ -21,7 +21,7 @@ def main() -> None:
     parser.add_argument('--url',default='http://127.0.0.1:8765')
     parser.add_argument('--token-file',type=Path,default=Path('data/admin.token'))
     sub=parser.add_subparsers(dest='command',required=True)
-    sub.add_parser('init-token');sub.add_parser('status')
+    sub.add_parser('init-token');sub.add_parser('status');sub.add_parser('usage')
     run=sub.add_parser('run');run.add_argument('--date',required=True);run.add_argument('--refresh',action='store_true')
     args=parser.parse_args()
     if args.command=='init-token':
@@ -34,6 +34,7 @@ def main() -> None:
     data=None
     if args.command=='run':
         path='/api/runs';method='POST';data=json.dumps({'date':args.date,'refresh':args.refresh}).encode()
+    elif args.command=='usage':path='/api/admin/usage';method='GET'
     else:path='/api/runs/active';method='GET'
     request=urllib.request.Request(url+path,data=data,method=method,
         headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})

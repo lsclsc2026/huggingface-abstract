@@ -1,4 +1,4 @@
-# 公开阅读站部署（1.7.0）
+# 公开阅读站部署（1.8.0）
 
 目标：访客打开HTTPS网址即可阅读，无需注册登录。当前版本撤下评论功能，隐藏待读、个人兴趣/关键词设置与相关度；无GPU需求，模型通过外部API调用。
 
@@ -24,7 +24,7 @@ python3 deploy/admin.py --token-file data/admin.token init-token
 chmod 600 config.yaml .env
 ```
 
-编辑config.yaml中的模型配置和抓取源；`storage.data_dir`保持`./data`，schedule.enabled=true、间隔15、digest_time=16:00。编辑`.env`的`PAPER_DAILY_DOMAIN`为真实域名。
+编辑config.yaml中的模型配置和抓取源；`storage.data_dir`保持`./data`，schedule.enabled=true、间隔15（导读实时随内容更新，digest_time仅保留兼容）。编辑`.env`的`PAPER_DAILY_DOMAIN`为真实域名。
 
 容器应用以UID/GID 10001运行。在新部署目录由具备权限的管理员设置数据/配置权限：
 
@@ -67,6 +67,7 @@ sudo systemctl status paper-daily
 ```bash
 # 原生服务/SSH隧道入口
 python3 deploy/admin.py --token-file data/admin.token status
+python3 deploy/admin.py --token-file data/admin.token usage
 python3 deploy/admin.py --token-file data/admin.token run --date 2026-11-05
 
 # Docker公开HTTPS入口，管理者在服务器上读取受限令牌文件

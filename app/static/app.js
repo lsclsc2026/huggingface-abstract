@@ -584,8 +584,9 @@
   function scheduleDigestPoll() {
     if (state.digestTimer) window.clearTimeout(state.digestTimer);
     if (state.date !== state.today) return;
+    if (state.settings?.schedule?.enabled === false && !state.data?.active_run) return;
     state.digestTimer = window.setTimeout(async () => {
-      if (state.selectedId) { scheduleDigestPoll(); return; }
+      if (state.selectedId || document.visibilityState === "hidden") { scheduleDigestPoll(); return; }
       try { await loadDay(state.date, { silent: true }); }
       catch { scheduleDigestPoll(); }
     }, 60000);

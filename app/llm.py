@@ -280,7 +280,7 @@ class LLMClient:
                 except LLMError:
                     # A plain Chinese overview is already the required product;
                     # do not pay for a repair call solely to add JSON braces.
-                    if purpose=='digest' and 20<=len(content)<=800 and len(re.findall(r'[\u4e00-\u9fff]',content))>=10 and not any(mark in content for mark in ('{','}','```','<','>')):
+                    if purpose=='digest' and 20<=len(content)<=800 and len(re.findall(r'[\u4e00-\u9fff]',content))>=10 and not any(mark in content for mark in ('{','}','[',']','`','<','>')):
                         raw={'headline':'今日论文速览','overview':content.strip()}
                     else:raise
                 if not raw.get('overview' if purpose=='digest' else 'summary'):
