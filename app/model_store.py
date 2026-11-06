@@ -17,7 +17,9 @@ class ModelStore:
               seq INTEGER PRIMARY KEY AUTOINCREMENT, created_at REAL NOT NULL,
               model TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL,
               elapsed_ms INTEGER NOT NULL, prompt_tokens INTEGER, completion_tokens INTEGER,
-              total_tokens INTEGER, cached_tokens INTEGER);''')
+              total_tokens INTEGER, cached_tokens INTEGER, metadata TEXT NOT NULL DEFAULT '{}');''')
+            if 'metadata' not in {row[1] for row in con.execute('PRAGMA table_info(model_calls)')}:
+                con.execute("ALTER TABLE model_calls ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'")
 
     def lock(self,key):
         identity=(str(self.db.path.resolve()),key)
@@ -34,7 +36,7 @@ class ModelStore:
         with self.db.connect() as con:
             con.execute('INSERT INTO artifact_cache VALUES (?,?,?,?) ON CONFLICT(kind,cache_key) DO UPDATE SET value=excluded.value,expires_at=excluded.expires_at',(kind,key,json.dumps(value,ensure_ascii=False),time.time()+ttl if ttl else None))
 
-    def record(self,model,purpose,status,elapsed,usage=None):
+    def record(self,model,purpose,status,elapsed,usage=None,metadata=None):
         usage=usage if isinstance(usage,dict) else {}
         def count(key):
             value=usage.get(key)
@@ -42,9 +44,12 @@ class ModelStore:
         details=usage.get('prompt_tokens_details') or {}
         cached=details.get('cached_tokens') if isinstance(details,dict) else None
         with self.db.connect() as con:
-            con.execute('INSERT INTO model_calls(created_at,model,purpose,status,elapsed_ms,prompt_tokens,completion_tokens,total_tokens,cached_tokens) VALUES (?,?,?,?,?,?,?,?,?)',(time.time(),model,purpose,str(status),int(elapsed*1000),count('prompt_tokens'),count('completion_tokens'),count('total_tokens'),cached if isinstance(cached,int) else None))
+            con.execute('INSERT INTO model_calls(created_at,model,purpose,status,elapsed_ms,prompt_tokens,completion_tokens,total_tokens,cached_tokens,metadata) VALUES (?,?,?,?,?,?,?,?,?,?)',(time.time(),model,purpose,str(status),int(elapsed*1000),count('prompt_tokens'),count('completion_tokens'),count('total_tokens'),cached if isinstance(cached,int) else None,json.dumps({'usage':usage,**(metadata or {})})))
 
     def usage(self):
         with self.db.connect() as con:
             row=con.execute('SELECT COUNT(*),SUM(prompt_tokens),SUM(completion_tokens),SUM(total_tokens),SUM(CASE WHEN prompt_tokens IS NULL OR completion_tokens IS NULL THEN 1 ELSE 0 END) FROM model_calls').fetchone()
-        return dict(zip(('requests','prompt_tokens','completion_tokens','total_tokens','unknown_usage_requests'),[row[0],row[1],row[2],row[3],row[4] or 0]))
+            groups=con.execute('SELECT purpose,COUNT(*) AS requests,SUM(prompt_tokens) AS prompt_tokens,SUM(completion_tokens) AS completion_tokens FROM model_calls GROUP BY purpose').fetchall()
+        result=dict(zip(('requests','prompt_tokens','completion_tokens','total_tokens','unknown_usage_requests'),[row[0],row[1],row[2],row[3],row[4] or 0]))
+        result['by_purpose']=[dict(group) for group in groups]
+        return result

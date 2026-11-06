@@ -29,3 +29,15 @@ async def test_source_lookup_is_bounded_cached_and_rejects_arbitrary_urls(tmp_pa
     await source.get('https://127.0.0.1/private')
     assert len(calls)==2
     assert all(x.startswith('https://arxiv.org/') for x in calls)
+
+
+@pytest.mark.parametrize('heading',['Methods','Methodology','Materials and Methods','Our Approach'])
+def test_real_world_method_headings(heading):
+    result=parse_sources('',f'<section><h2>2 {heading}</h2><p>Actual architecture and training evidence.</p></section>')
+    assert result['evidence_level']=='method'
+    assert 'Actual architecture' in result['method_text']
+
+
+def test_page_count_or_code_comment_is_not_a_publication_claim():
+    result=parse_sources('<table><tr><td>Comments:</td><td>22 pages, code available</td></tr></table>','')
+    assert result['publication']['statement']=='未核实发表或投稿状态'

@@ -36,7 +36,12 @@ class ExtractionService:
                 p['raw']={**(previous.get('raw') or {}),**(p.get('raw') or {})}
             self.db.upsert_papers(fetched)
             papers=self.db.get_papers_for_date(day)
-            pending=[p for p in papers if refresh or not p.get('analysis')]
+            def needs_analysis(p):
+                if refresh or not p.get('analysis'):return True
+                if p.get('analysis_status')!='failed' or not configured:return False
+                record=self.store.get('paper-failures',p['id']) or {}
+                return record.get('attempts',0)<2 and self.settings.now().timestamp()>=record.get('retry_at',0)
+            pending=[p for p in papers if needs_analysis(p)]
             total=len(pending);processed=failed=0;breaker=_Breaker()
             self.db.update_run(run_id,total=total,processed=0,failed=0,stage='analyzing' if total else 'digest')
             if self.settings.fetch.detail_pages:
@@ -51,13 +56,17 @@ class ExtractionService:
                         p['source_material']=await self.sources.get(p['id'])
                         analysis=await llm.summarize_paper(p)
                         self.db.update_paper_analysis(p['id'],analysis,'ok','llm')
+                        self.store.put('paper-failures',p['id'],{'attempts':0,'retry_at':0})
                         breaker.reset()
                     except LLMError as exc:
                         breaker.record_failure(str(exc));failed+=1
+                        record=self.store.get('paper-failures',p['id']) or {}
+                        self.store.put('paper-failures',p['id'],{'attempts':record.get('attempts',0)+1,
+                            'retry_at':self.settings.now().timestamp()+max(900,self.settings.schedule.check_interval_minutes*60)})
                         self.db.update_paper_analysis(p['id'],heuristic_analysis(p,self.settings.profile),'failed','fallback',str(exc))
                 else:
                     if configured:failed+=1
-                    self.db.update_paper_analysis(p['id'],heuristic_analysis(p,self.settings.profile),'fallback','fallback',breaker.reason if configured else '模型未配置')
+                    self.db.update_paper_analysis(p['id'],heuristic_analysis(p,self.settings.profile),'failed' if configured else 'fallback','fallback',breaker.reason if configured else '模型未配置')
                 processed+=1
                 self.db.update_run(run_id,processed=processed,failed=failed,stage='analyzing',message=f'已分析 {processed}/{total} 篇。')
             async def work(llm=None):
@@ -85,7 +94,7 @@ class ExtractionService:
         key=fingerprint(papers)
         if previous and previous.get('content_fingerprint')==key and previous.get('overview_status')=='ready' and (previous.get('source')=='llm' or not self.settings.llm.is_configured):return
         self.db.update_run(run_id,stage='digest',message='正在更新简短总览，逐篇条目复用分析…')
-        overview=previous;status='unavailable' if not previous else 'stale'
+        overview=previous if llm or self.settings.llm.is_configured else None;status='unavailable' if not previous else 'stale'
         if llm:
             try:
                 overview=await llm.generate_digest(day,papers)

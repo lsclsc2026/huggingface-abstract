@@ -271,7 +271,7 @@ def create_app() -> FastAPI:
         started = time.monotonic()
         try:
             async with LLMClient(
-                runtime.settings.llm, runtime.settings.profile
+                runtime.settings.llm, runtime.settings.profile, store=runtime.service.store
             ) as llm:
                 reply = await llm.test_connection()
         except LLMError as exc:

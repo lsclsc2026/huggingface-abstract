@@ -190,9 +190,13 @@ class LLMClient:
                     ) from exc
 
                 if self.store:
-                    try: usage = response.json().get('usage')
-                    except (ValueError,AttributeError): usage = None
-                    self.store.record(self.config.model,_PURPOSE.get(),response.status_code,time.monotonic()-started,usage)
+                    try:
+                        payload_meta=response.json()
+                        usage=payload_meta.get('usage')
+                        metadata={'reported_model':payload_meta.get('model'),
+                                  'finish_reason':((payload_meta.get('choices') or [{}])[0]).get('finish_reason')}
+                    except (ValueError,AttributeError,IndexError): usage=None;metadata={}
+                    self.store.record(self.config.model,_PURPOSE.get(),response.status_code,time.monotonic()-started,usage,metadata)
                 if response.status_code == 200:
                     return self._extract_content(response)
 
@@ -499,6 +503,8 @@ def _as_misconceptions(value: Any, limit: int = 3) -> list[dict[str, str]]:
 def normalize_analysis(
     raw: dict[str, Any], paper: dict[str, Any], profile: ProfileConfig
 ) -> dict[str, Any]:
+    if re.search(r"(?:\bL_[a-z]+|[=θψλ])",str(raw.get('method') or '')):
+        raise LLMError('方法正文包含公式而非通俗解释，未缓存该结果。')
     tags = _as_list(raw.get("tags"), limit=6)
     if not tags:
         tags = _as_list(paper.get("keywords"), limit=5)

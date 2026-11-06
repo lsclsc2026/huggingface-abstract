@@ -127,3 +127,29 @@ async def test_scheduler_resumes_unanalyzed_papers_after_interruption(scheduled_
         assert runtime.db.latest_run('2026-11-05')['status'] == 'completed'
     finally:
         await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_fallback_overview_count_updates_and_failed_articles_retry_with_bound(scheduled_runtime,monkeypatch):
+    runtime,clock,papers=scheduled_runtime
+    try:
+        await tick(runtime)
+        assert '2篇' in runtime.db.digest_for_day('2026-11-05')['overview']
+        papers.append({'id':'c','title':'C','daily_date':'2026-11-05'})
+        clock['now']+=timedelta(minutes=15);await tick(runtime)
+        digest=runtime.db.digest_for_day('2026-11-05')
+        assert '3篇' in digest['overview'] and digest['overview_status']=='ready'
+        runtime.settings.llm.enabled=True;runtime.settings.llm.api_key='test'
+        runtime.db.upsert_papers([{'id':'failure','title':'Failure','daily_date':'2026-11-05'}])
+        papers.append({'id':'failure','title':'Failure','daily_date':'2026-11-05'})
+        # Pre-existing model-free articles count as valid cached content; isolate failure recovery.
+        for p in papers[:-1]:runtime.db.update_paper_analysis(p['id'],{'summary':'Known','tldr':'Known'},'ok','llm')
+        calls=[]
+        async def summarize(self,paper):calls.append(paper['id']);raise LLMError('temporary')
+        async def digest(self,*args):return {'overview':'Short','source':'llm'}
+        monkeypatch.setattr(LLMClient,'summarize_paper',summarize);monkeypatch.setattr(LLMClient,'generate_digest',digest)
+        for _ in range(4):
+            clock['now']+=timedelta(minutes=15);await tick(runtime)
+        assert calls==['failure','failure']
+        assert runtime.db.get_paper('failure')['analysis_status']=='failed'
+    finally:await runtime.shutdown()

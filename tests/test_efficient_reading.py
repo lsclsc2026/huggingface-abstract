@@ -104,3 +104,18 @@ async def test_model_switch_misses_cache_and_http_failures_are_bounded(tmp_path)
         await client.close()
     assert calls==['model-one','model-two','fail']
     assert store.usage()['requests']==3
+
+
+def test_administrator_connection_test_is_metered(public_client,monkeypatch):
+    runtime=public_client.app.state.runtime
+    runtime.settings.llm.enabled=True;runtime.settings.llm.api_key='test'
+    monkeypatch.setattr(LLMClient,'_make_client',lambda self:httpx.AsyncClient(transport=httpx.MockTransport(lambda request:httpx.Response(200,json={'choices':[{'message':{'content':'OK'}}],'usage':{'prompt_tokens':7,'completion_tokens':1,'total_tokens':8}}))))
+    response=public_client.post('/api/settings/test',headers={'Authorization':'Bearer test-admin-secret'})
+    assert response.status_code==200
+    assert runtime.service.store.usage()['requests']==1
+    assert runtime.service.store.usage()['total_tokens']==8
+
+
+def test_formula_heavy_method_is_not_accepted_as_plain_reading():
+    from app.llm import normalize_analysis,LLMError
+    with pytest.raises(LLMError):normalize_analysis({'summary':'OK','method':'L_pred=λL_rec'},paper(),ProfileConfig())
