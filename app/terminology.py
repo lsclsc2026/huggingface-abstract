@@ -92,6 +92,8 @@ def normalize_day(db, day, *, apply=False):
     """Explicit offline migration of one date. No model calls or source changes."""
     import json
     from datetime import date
+    from .db import _paper_row
+    from .briefing import compose, fingerprint
     date.fromisoformat(day)
     report = {'date': day, 'selected': 0, 'updated': 0, 'text_changed': 0, 'ids': []}
     with db.connect() as con:
@@ -99,8 +101,11 @@ def normalize_day(db, day, *, apply=False):
         con.execute('BEGIN IMMEDIATE' if apply else 'BEGIN')
         if apply and con.execute("SELECT 1 FROM runs WHERE status IN ('queued','running') LIMIT 1").fetchone():
             raise RuntimeError('有提取任务进行中，请完成后再更新术语。')
-        rows = con.execute('SELECT id,analysis FROM papers WHERE daily_date=? ORDER BY id', (day,)).fetchall()
-        for row in rows:
+        rows = con.execute('SELECT * FROM papers WHERE daily_date=? ORDER BY id', (day,)).fetchall()
+        before_papers = [_paper_row(row) for row in rows]
+        after_papers = deepcopy(before_papers)
+        digest_row = con.execute("SELECT id,digest FROM runs WHERE date=? AND digest IS NOT NULL AND digest!='' ORDER BY created_at DESC,rowid DESC LIMIT 1", (day,)).fetchone()
+        for row, paper in zip(rows, after_papers):
             if not row['analysis']:
                 continue
             before = json.loads(row['analysis'])
@@ -108,6 +113,7 @@ def normalize_day(db, day, *, apply=False):
                 continue
             report['selected'] += 1
             after = normalize_terminology(before)
+            paper['analysis'] = after
             if {k:v for k,v in after.items() if k!='terminology_version'} != {k:v for k,v in before.items() if k!='terminology_version'}:
                 report['text_changed'] += 1
             if before == after:
@@ -117,4 +123,21 @@ def normalize_day(db, day, *, apply=False):
             if apply:
                 con.execute('UPDATE papers SET analysis=? WHERE id=? AND daily_date=?',
                             (json.dumps(after, ensure_ascii=False), row['id'], day))
+        # Vocabulary-only changes preserve a ready overview's meaning. Advance its
+        # fingerprint with the transformed entries so the scheduler need not pay
+        # to regenerate an equivalent overview. Never bless an already stale one.
+        report['digest_updated'] = False
+        if digest_row:
+            previous = json.loads(digest_row['digest'])
+            if previous.get('overview_status') == 'ready' and previous.get('content_fingerprint') == fingerprint(before_papers):
+                overview = {**previous, 'overview': prose(previous.get('overview', '')),
+                            'headline': prose(previous.get('headline', '')),
+                            'content_fingerprint': fingerprint(after_papers),
+                            'overview_fingerprint': fingerprint(after_papers)}
+                updated = {**previous, **compose(day, after_papers, overview)}
+                if updated != previous:
+                    report['digest_updated'] = True
+                    if apply:
+                        con.execute('UPDATE runs SET digest=? WHERE id=? AND date=?',
+                                    (json.dumps(updated, ensure_ascii=False), digest_row['id'], day))
     return report
