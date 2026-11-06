@@ -1,0 +1,27 @@
+# 1.9.0 方法正文依据验证
+
+## 范围
+
+保持静态前端和所有页面格式不变。新分析先提取arXiv HTML方法正文，失败再尝试PDF文本；方法内容由单次分析请求同时生成，通过原文引句校验后展示。历史成功分析不自动重写，避免批量模型费用。新分析或按既有失败重试策略处理的论文使用新逻辑。
+
+## 依据和预算
+
+- HTML按章节祖先排除实验、比较、基线、相关工作、参考文献等；按子节轮转提取，最多12个编号片段、正文合计6000字符。实验结果输入最多1500字符，补充说明800字符。字符预算不等同精确token预算，实际看网关usage。
+- 方法生成返回自然段和对应片段ID/32–320字符连续原文引句。每段校验来源ID和引句存在，失败段落省略；全失败或正文不可用时展示确定性的缺失说明。后台保存依据，前端仍显示原有方法自然段，无新栏目。
+- 引句存在不等于语义已经被机器证明；中文解释仍可能出错。实现不使用额外校对模型或反复修复请求。
+- PDF本地解析：下载上限12MB、30页、提取文本上限16万字符；子进程CPU15秒、墙钟20秒、地址空间512MB。扫描件不做OCR，解析失败安全留缺。文档参考：[pypdf官方文本提取说明](https://pypdf.readthedocs.io/en/latest/user/extract-text.html)。
+- arXiv来源缓存升级v4，模型协议reading-v7；已有成功论文不会因升级而自动重算，导读协议仍v6。
+
+## 测试和真实样本
+
+95项完整pytest通过；JS语法及git diff --check通过；独立审查已关闭三项发现：实验基线误入证据、旧method字段导致整篇失败、兼容降级遗漏关闭思考参数。测试覆盖真实构造PDF、HTML子节预算、非法引句、空正文、缓存单次调用、400/422兼容降级。
+
+真实云端临时数据库验证H2RB（2611.04391），方法来源HTML，12段原文共4288字符。最终样本4段方法都附有匹配原文引句，重复读取命中缓存，没有再请求。另一篇2611.00883未取得可识别方法，HTML/PDF备用路径均尝试后明确留缺，不猜测实现。样本结果仅在`/root/autodl-tmp/grounded-preview/`，不覆盖生产历史分析。
+
+开发共2次真实样本分析调用，均记录在临时库（不是生产usage账本）：第一次input3100/output7385/total10485，其中reasoning5764；发现网关在thinking.disabled加effort:low时仍产生思考费用。按[DeepSeek官方参数](https://api-docs.deepseek.com/guides/thinking_mode/)改为thinking.disabled加effort:none，并在兼容降级保留。最终样本input3076/output1511/total4587，含引用证据；两次合计15072 token。该结果仅为单篇实测，不承诺所有论文固定节省比例，不将开发试验成本隐去。
+
+## 部署
+
+部署前备份：`/root/autodl-tmp/backups/paper-daily-pre-v1.9.0-20261106-142057/`，源码、真实配置、SQLite一致性快照及其他数据。备份时42篇、生产model_calls 28条；等无在途任务后部署，保留15分钟自动调度和私有配置。实际部署结果在HANDOFF记录。
+
+源码目录`/home/lsc/work/huggingface-abstract`；关键入口`app/paper_sources.py`、`app/method_evidence.py`、`app/pdf_text.py`、`app/prompts.py`、`app/llm.py`。安装依赖`.venv/bin/python -m pip install -r requirements.txt`，启动`.venv/bin/python run.py --no-browser`；原生JS/CSS无需前端构建。体验仍需运行`./connect-cloud.sh`后访问<http://127.0.0.1:8765>，不是公网入口。

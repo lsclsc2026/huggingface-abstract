@@ -179,7 +179,7 @@ async def test_llm_retries_without_json_mode():
         await client.close()
     assert analysis["source"] == "llm"
     assert "relevance_score" not in analysis
-    assert analysis["prompt_version"] == "reading-v6"
+    assert analysis["prompt_version"] == "reading-v7"
     assert analysis["analogy"].startswith("可以把它想成")
     assert analysis["jargon"][0]["term"] == "强化学习"
     assert analysis["contrast"].startswith("旧做法")

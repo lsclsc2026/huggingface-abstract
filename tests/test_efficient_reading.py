@@ -42,7 +42,7 @@ async def test_success_cache_singleflight_survives_restart_and_tracks_usage(tmp_
     other=LLMClient(config,ProfileConfig(),store=ModelStore(db))
     third=await other.summarize_paper(paper());await other.close()
     assert first==second==third and len(calls)==1
-    assert first['prompt_version']=='reading-v6'
+    assert first['prompt_version']=='reading-v7'
     stats=store.usage()
     assert stats['requests']==1 and stats['prompt_tokens']==120 and stats['completion_tokens']==80
     assert calls[0]['thinking']=={'type':'disabled'}
@@ -118,7 +118,8 @@ def test_administrator_connection_test_is_metered(public_client,monkeypatch):
 
 def test_formula_heavy_method_is_not_accepted_as_plain_reading():
     from app.llm import normalize_analysis,LLMError
-    with pytest.raises(LLMError):normalize_analysis({'summary':'OK','method':'L_pred=λL_rec'},paper(),ProfileConfig())
+    result=normalize_analysis({'summary':'OK','method':'L_pred=λL_rec'},paper(),ProfileConfig())
+    assert 'L_pred' not in result['method'] and result['summary']=='OK'
 
 
 @pytest.mark.asyncio

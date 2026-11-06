@@ -53,7 +53,7 @@ llm:
   max_retries: 1
 
   # 深度思考强度。OpenAI 兼容服务支持时可填 "low" / "medium" / "high"。
-  # Flash请求显式关闭thinking；low同时为兼容网关提供较低的思考预算。以usage为准。
+  # Flash请求显式关闭thinking，并发送reasoning_effort:none，避免兼容网关将low解释为开启思考。实际以usage为准。
   reasoning_effort: "low"
   # 是否发送 response_format=json_object。auto 会先尝试，不支持时自动降级。
   # 可选：auto / always / never

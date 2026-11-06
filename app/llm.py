@@ -101,6 +101,8 @@ class LLMClient:
             payload["response_format"] = {"type": "json_object"}
         if 'deepseek' in self.config.model.lower() and any(part in self.config.model.lower() for part in ('flash','v4')):
             payload['thinking'] = {'type': 'disabled'}
+            # Keep the disable signal in JSON/parameter compatibility fallbacks too.
+            payload['reasoning_effort'] = 'none'
         if include_extra_body and self.config.extra_body:
             payload.update(self.config.extra_body)
         return payload
@@ -270,7 +272,7 @@ class LLMClient:
                   'credentials_hash':hashlib.sha256(json.dumps(self._headers(),sort_keys=True).encode()).hexdigest(),
                   'max_tokens':max_tokens,'temperature':self.config.temperature,
                   'reasoning':self.config.reasoning_effort,'extra':self.config.extra_body,
-                  'json_mode':self.config.json_mode,'protocol':'reading-v6'}
+                  'json_mode':self.config.json_mode,'protocol':'reading-v7' if purpose=='paper' else 'reading-v6'}
         key=hashlib.sha256(json.dumps(material,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
         async def generate():
             marker=_PURPOSE.set(purpose)
@@ -510,8 +512,6 @@ def _as_misconceptions(value: Any, limit: int = 3) -> list[dict[str, str]]:
 def normalize_analysis(
     raw: dict[str, Any], paper: dict[str, Any], profile: ProfileConfig
 ) -> dict[str, Any]:
-    if re.search(r"(?:\bL_[a-z]+|[=θψλ])",str(raw.get('method') or '')):
-        raise LLMError('方法正文包含公式而非通俗解释，未缓存该结果。')
     tags = _as_list(raw.get("tags"), limit=6)
     if not tags:
         tags = _as_list(paper.get("keywords"), limit=5)
@@ -533,7 +533,10 @@ def normalize_analysis(
         key_points = [tldr]
     how_it_works = _as_list(raw.get("how_it_works"), limit=5)
     how_it_works = [_clip(item, 180) for item in how_it_works]
+    from .method_evidence import grounded_method
+    method_result = grounded_method(raw, paper.get("source_material") or {})
     return {
+        **method_result,
         "title_zh": title,
         "tldr": tldr,
         "problem": _clip(_text(raw.get("problem"), 500), 300),
@@ -545,7 +548,6 @@ def normalize_analysis(
         "misconceptions": _as_misconceptions(raw.get("misconceptions")),
         "jargon": _as_jargon(raw.get("jargon")),
         "key_points": key_points,
-        "method": _text(raw.get("method"), 2000),
         "findings": _clip(_text(raw.get("findings"), 500), 220),
         "why_it_matters": _clip(_text(raw.get("why_it_matters"), 500), 220),
         "limitations": _clip(_text(raw.get("limitations"), 500), 200),
@@ -556,7 +558,7 @@ def normalize_analysis(
         "paper_type": paper_type,
         "code_available": bool(paper.get("github_url")),
         "source": "llm",
-        "prompt_version": "reading-v6",
+        "prompt_version": "reading-v7",
         "category": _clip(_text(raw.get("category"), 40), 40),
     }
 

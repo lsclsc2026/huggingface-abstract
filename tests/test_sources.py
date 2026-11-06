@@ -27,7 +27,7 @@ async def test_source_lookup_is_bounded_cached_and_rejects_arbitrary_urls(tmp_pa
     assert result['evidence_level']=='abstract'
     await source.get('2611.04391')
     await source.get('https://127.0.0.1/private')
-    assert len(calls)==2
+    assert len(calls)==3
     assert all(x.startswith('https://arxiv.org/') for x in calls)
 
 
